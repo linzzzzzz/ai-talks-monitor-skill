@@ -1,0 +1,38 @@
+# People to monitor. For each person, the script searches YouTube for long-form
+# videos matching the query. Claude reviews the candidates and accepts only
+# original talks/interviews (not reactions, summaries, or other derivative content).
+#
+# Tips for search_query:
+#   - Wrap the name in quotes for exact matching: '"Sam Altman" interview'
+#   - For bilingual subjects, add a second entry with their native name:
+#       name: "Fei-Fei Li (Chinese)"
+#       search_query: '"李飞飞" 访谈'
+thought_leaders:
+  - name: "Sam Altman"
+    search_query: '"Sam Altman" interview'
+  - name: "Andrew Ng"
+    search_query: '"Andrew Ng" interview'
+  - name: "Yann LeCun"
+    search_query: '"Yann LeCun" interview'
+
+# Optional: topic-based searches. Useful for catching talks from people you
+# don't know yet, or conference keynotes. Disabled by default because results
+# are broader and noisier than person-based searches — the LLM filter still
+# applies, but expect more false positives.
+topics:
+  enabled: false
+  searches:
+    - name: "AI Safety"
+      search_query: '"AI safety" interview OR talk OR podcast'
+      min_duration_minutes: 30  # stricter than default to cut noise
+    - name: "NeurIPS 2026"
+      search_query: 'NeurIPS 2026 keynote talk'
+      min_duration_minutes: 20
+
+# Minimum video length in minutes. Videos shorter than this are skipped before
+# any API classification call. Raises this to cut more noise.
+min_duration_minutes: 20
+
+# How far back to search on the very first run (or when using --lookback-days).
+# After the first run, the script uses the last_checked timestamp from state.json.
+lookback_days: 7
