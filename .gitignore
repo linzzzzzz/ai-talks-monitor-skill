@@ -4,3 +4,5 @@ ai_talks.xml
 __pycache__/
 *.pyc
 .DS_Store
+CLAUDE.md
+DESIGN.md
