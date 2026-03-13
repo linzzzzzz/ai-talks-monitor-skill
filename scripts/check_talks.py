@@ -268,13 +268,12 @@ def send_telegram(bot_token: str, chat_id: str, talks: list[dict], dry_run: bool
             f"{video['url']}"
         )
         if dry_run:
-            print(f"[DRY RUN] Telegram message:\n{text}\n")
-        else:
-            requests.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-                timeout=10,
-            ).raise_for_status()
+            text = f"_\\[DRY RUN\\]_\n{text}"
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        ).raise_for_status()
 
 
 def youtube_ts_to_rfc2822(iso_ts: str) -> str:
@@ -324,15 +323,12 @@ def cmd_fetch_candidates(args) -> None:
             return search_youtube_ytdlp(query, published_after)
 
     min_duration = config.get("min_duration_minutes", 20)
-    lookback_days = args.lookback_days or config.get("lookback_days", 7)
+    lookback_days = args.lookback_days or config.get("lookback_days", 5)
 
-    if state.get("last_checked") and not args.lookback_days:
-        published_after = state["last_checked"]
-    else:
-        dt = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-        published_after = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    dt = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+    published_after = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    print(f"Searching for videos published after {published_after}\n")
+    print(f"Searching for videos published after {published_after} ({lookback_days}d rolling window)\n")
 
     seen_ids: set[str] = set(state.get("seen_ids", []))
     all_candidates: list[dict] = []
@@ -461,7 +457,7 @@ def cmd_commit(args) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI Talks Monitor")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Preview without writing files, updating state, or sending notifications")
+                        help="Preview without writing files or updating state; Telegram still fires (prefixed [DRY RUN])")
     parser.add_argument("--lookback-days", type=int, default=None,
                         help="How many days back to search (overrides state's last_checked)")
 

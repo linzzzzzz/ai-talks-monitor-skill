@@ -47,18 +47,26 @@ This is a two-phase process: the script fetches candidates, you classify them, t
 ```bash
 python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates
 ```
-Use `--lookback-days N` to search further back than the last recorded check — helpful after a gap or on first setup:
+Use `--lookback-days N` to override the default rolling window — helpful for backfilling after a long gap:
 ```bash
 python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates --lookback-days 30
 ```
 
 **Phase 2 — classify (your job):**
 
-Read `SKILL_DIR/candidates.json`. For each video, decide:
+First, read `SKILL_DIR/state.json` (if it exists) to load the `items` list — the recently committed talks. You'll need this for cross-run deduplication below.
+
+Then read `SKILL_DIR/candidates.json`. For each video, decide:
 - **Person watchlist entries**: Is the named person a direct guest/participant in this video, or just being discussed (reaction, summary, news report about them)?
 - **Topic search entries**: Is this a genuine first-person talk or interview, or a third-party explainer/commentary?
 
-Reject low-confidence cases — it's better to miss a real talk than to include a reaction video.
+**Same-event deduplication — across candidates:**
+Multiple candidates may be different channels reuploading the same underlying event (same person, same venue/date, nearly identical descriptions). Accept only one. Prefer: original/official channel > named news outlet > generic news reupload. Reject the rest.
+
+**Same-event deduplication — against state.json:**
+If a candidate appears to be the same event as a talk already in `state.json items` (same person, same event, similar timeframe), reject it even though the video ID is new.
+
+Reject low-confidence cases — it's better to miss a real talk than to include a reaction video or a duplicate.
 
 **Phase 3 — commit accepted videos:**
 ```bash
@@ -113,7 +121,7 @@ Read and display `thought_leaders` (and `topics.searches` if enabled) from `SKIL
 
 ### Adjust settings
 - `min_duration_minutes` — minimum video length to consider (default: 20). Raise to cut more noise.
-- `lookback_days` — how far back to search on first run (default: 7).
+- `lookback_days` — rolling search window in days (default: 5). Every run searches this far back.
 
 ## Automated Daily Check
 
@@ -153,9 +161,9 @@ The fetch step can be scheduled unattended — `--fetch-candidates` only writes 
 
 ## How it works
 
-1. **YouTube search** (`--fetch-candidates`): Queries `search.list` with `videoDuration=long` (>20 min) and `publishedAfter` the last check time
+1. **YouTube search** (`--fetch-candidates`): Queries `search.list` with `videoDuration=long` (>20 min) and `publishedAfter` a rolling window (`lookback_days` days back from now)
 2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Writes survivors to `candidates.json`
-3. **Classification (you)**: Read `candidates.json`, decide which are genuine original talks vs derivative content
+3. **Classification (you)**: Read `state.json` + `candidates.json`; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items
 4. **Commit** (`--commit ID ...`): Builds `ai_talks.xml` with a rolling 30-day RSS window, updates `state.json`, posts to Telegram if configured
 
 ## TrendRadar integration

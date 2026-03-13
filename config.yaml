@@ -33,6 +33,6 @@ topics:
 # any API classification call. Raises this to cut more noise.
 min_duration_minutes: 20
 
-# How far back to search on the very first run (or when using --lookback-days).
-# After the first run, the script uses the last_checked timestamp from state.json.
-lookback_days: 7
+# Rolling search window: every run searches this many days back from now.
+# Override per-run with --lookback-days N (e.g. to backfill after a long gap).
+lookback_days: 5
