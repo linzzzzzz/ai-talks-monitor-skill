@@ -66,6 +66,12 @@ pip install requests pyyaml
 | `AI_TALKS_FEEDS_REPO` | No | Absolute path to a local git repo (e.g. `~/feeds`). If set, `--commit` copies `ai_talks.xml` there and runs `git push` automatically — keeping your GitHub Pages feed up to date. |
 
 **yt-dlp fallback:** If `YOUTUBE_API_KEY` is not set, the script uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to search YouTube without an API key. Install it with `pip install yt-dlp`. Without `YTDLP_COOKIES_FROM_BROWSER`, video descriptions will be empty (YouTube requires login for per-video metadata).
+You can optionally enable a coarse YouTube-side `This month` publish-date filter for yt-dlp fallback searches with `config.yaml`:
+
+```yaml
+ytdlp_search:
+  use_this_month_filter: true
+```
 
 ## Quick start
 

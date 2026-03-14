@@ -8,26 +8,106 @@
 #       name: "Fei-Fei Li (Chinese)"
 #       search_query: '"李飞飞" 访谈'
 thought_leaders:
+  # OpenAI
   - name: "Sam Altman"
     search_query: '"Sam Altman" interview'
-  - name: "Andrew Ng"
-    search_query: '"Andrew Ng" interview'
+  - name: "Greg Brockman"
+    search_query: '"Greg Brockman" interview'
+  # Anthropic
+  - name: "Dario Amodei"
+    search_query: '"Dario Amodei" interview'
+  - name: "Amanda Askell"
+    search_query: '"Amanda Askell" interview'
+  # Google DeepMind
+  - name: "Demis Hassabis"
+    search_query: '"Demis Hassabis" interview'
+  - name: "Jeff Dean"
+    search_query: '"Jeff Dean" interview'
+  # Meta AI
   - name: "Yann LeCun"
     search_query: '"Yann LeCun" interview'
+  # Researchers / academics
+  - name: "Geoffrey Hinton"
+    search_query: '"Geoffrey Hinton" interview'
+  - name: "Yoshua Bengio"
+    search_query: '"Yoshua Bengio" interview'
+  - name: "Fei-Fei Li"
+    search_query: '"Fei-Fei Li" interview'
+  - name: "Andrej Karpathy"
+    search_query: '"Andrej Karpathy" interview'
+  - name: "Andrew Ng"
+    search_query: '"Andrew Ng" interview'
+  # Other labs / founders
+  - name: "Ilya Sutskever"
+    search_query: '"Ilya Sutskever" interview'
+  - name: "Aidan Gomez"
+    search_query: '"Aidan Gomez" interview'
+  # Industry
+  - name: "Jensen Huang"
+    search_query: '"Jensen Huang" interview'
+  - name: "Satya Nadella"
+    search_query: '"Satya Nadella" AI interview'
 
 # Optional: topic-based searches. Useful for catching talks from people you
-# don't know yet, or conference keynotes. Disabled by default because results
-# are broader and noisier than person-based searches — the LLM filter still
-# applies, but expect more false positives.
+# don't know yet — engineers, researchers, and founders from trusted AI labs
+# who aren't on the person watchlist. Disabled by default because results are
+# broader and noisier than person-based searches.
+#
+# require_org_confirmation: true — Claude accepts only if the title or
+# description confirms the speaker is affiliated with a trusted_org (see below).
+# This is the key filter that keeps lab-insider searches from being too noisy.
 topics:
-  enabled: false
+  enabled: true
   searches:
-    - name: "AI Safety"
-      search_query: '"AI safety" interview OR talk OR podcast'
-      min_duration_minutes: 30  # stricter than default to cut noise
-    - name: "NeurIPS 2026"
-      search_query: 'NeurIPS 2026 keynote talk'
+    - name: "Anthropic Talks"
+      search_query: 'anthropic researcher talk podcast'
+      require_org_confirmation: true
       min_duration_minutes: 20
+    - name: "OpenAI Talks"
+      search_query: 'openai researcher talk podcast'
+      require_org_confirmation: true
+      min_duration_minutes: 20
+    - name: "Google DeepMind Talks"
+      search_query: 'deepmind researcher talk podcast'
+      require_org_confirmation: true
+      min_duration_minutes: 20
+    - name: "Meta AI Talks"
+      search_query: 'meta AI researcher talk podcast'
+      require_org_confirmation: true
+      min_duration_minutes: 20
+
+# Trusted organizations for topic searches with require_org_confirmation: true.
+# Claude accepts a candidate only if the title or description confirms the speaker
+# is affiliated with one of these organizations.
+trusted_orgs:
+  - Anthropic
+  - OpenAI
+  - Google DeepMind
+  - Meta AI
+  - xAI
+  - Mistral
+  - Cohere
+  - Nvidia
+  - Microsoft Research
+
+# Channel watchlist. Monitors specific high-signal channels for any AI talk or interview.
+# Uses YouTube API (channel_id required) when YOUTUBE_API_KEY is set; falls back to yt-dlp (url).
+# Claude classifies channel entries broadly: is this a genuine AI talk/interview?
+channels:
+  enabled: true
+  list:
+    - name: "Lex Fridman"
+      channel_id: "UCSHZKyawb77ixDdsGog4iWA"
+      url: "https://www.youtube.com/@lexfridman"
+    - name: "Dwarkesh Patel"
+      channel_id: "UCDWkfXRiKRgXkB3bJyGWjZg"
+      url: "https://www.youtube.com/@DwarkeshPatel"
+    - name: "Machine Learning Street Talk"
+      channel_id: "UCMLtBahI5DMrt0NPvDSoIRQ"
+      url: "https://www.youtube.com/@MachineLearningStreetTalk"
+    - name: "Y Combinator"
+      channel_id: "UCcefcZRL2oaA_uBNeo5UOWg"
+      url: "https://www.youtube.com/@ycombinator"
 
 # Minimum video length in minutes. Videos shorter than this are skipped before
 # any API classification call. Raises this to cut more noise.
@@ -36,3 +116,12 @@ min_duration_minutes: 20
 # Rolling search window: every run searches this many days back from now.
 # Override per-run with --lookback-days N (e.g. to backfill after a long gap).
 lookback_days: 5
+
+# yt-dlp fallback search options. Only used when YOUTUBE_API_KEY is not set.
+# enabled: false by default — set to true to opt in to yt-dlp fallback.
+# yt-dlp fallback has known limitations: date filtering is approximate, full
+# descriptions require per-video fetches that frequently hit YouTube bot-checks,
+# and recall may be lower than the YouTube API. Prefer setting YOUTUBE_API_KEY.
+ytdlp_search:
+  enabled: true
+  use_this_month_filter: true

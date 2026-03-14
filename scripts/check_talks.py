@@ -15,6 +15,8 @@ Outputs:
   - Slack/Discord    — posted on --commit when SLACK_WEBHOOK_URL env var is set
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -22,6 +24,7 @@ import re
 import shutil
 import subprocess
 import time
+import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -37,6 +40,7 @@ RSS_FILE = SKILL_DIR / "ai_talks.xml"
 CANDIDATES_FILE = SKILL_DIR / "candidates.json"
 
 RSS_RETENTION_DAYS = 30
+YOUTUBE_SEARCH_SP_THIS_MONTH = "EgIIBA%253D%253D"
 
 DERIVATIVE_KEYWORDS = [
     "reaction", "reacts", "reacted", "summary", "summarized",
@@ -73,6 +77,25 @@ def parse_iso_duration_minutes(duration: str) -> int:
     mins = int(m.group(1)) if (m := re.search(r"(\d+)M", duration)) else 0
     secs = int(m.group(1)) if (m := re.search(r"(\d+)S", duration)) else 0
     return hours * 60 + mins + (1 if secs >= 30 else 0)
+
+
+def upload_date_to_iso8601(upload_date: str | None) -> str | None:
+    if not upload_date:
+        return None
+    return f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}T00:00:00Z"
+
+
+def unix_timestamp_to_iso8601(timestamp: int | float | None) -> str | None:
+    if timestamp is None:
+        return None
+    return datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def youtube_search_results_url(query: str, sp: str | None = None) -> str:
+    url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}"
+    if sp:
+        url += f"&sp={sp}"
+    return url
 
 
 def search_youtube(query: str, published_after: str, api_key: str) -> list[dict]:
@@ -116,13 +139,131 @@ def search_youtube(query: str, published_after: str, api_key: str) -> list[dict]
             "channel": item["snippet"]["channelTitle"],
             "description": detail["snippet"]["description"],
             "published_at": item["snippet"]["publishedAt"],
+            "published_at_precision": "exact",
             "duration_min": parse_iso_duration_minutes(detail["contentDetails"]["duration"]),
             "url": f"https://www.youtube.com/watch?v={vid_id}",
         })
     return results
 
 
-def search_youtube_ytdlp(query: str, published_after: str, max_results: int = 20) -> list[dict]:
+def search_youtube_channel(channel_id: str, published_after: str, api_key: str) -> list[dict]:
+    """Search a specific YouTube channel for recent long videos via the Data API."""
+    search_resp = requests.get(
+        "https://www.googleapis.com/youtube/v3/search",
+        params={
+            "part": "snippet",
+            "channelId": channel_id,
+            "type": "video",
+            "videoDuration": "long",
+            "order": "date",
+            "publishedAfter": published_after,
+            "maxResults": 20,
+            "key": api_key,
+        },
+        timeout=15,
+    )
+    search_resp.raise_for_status()
+    items = search_resp.json().get("items", [])
+    if not items:
+        return []
+
+    video_ids = [item["id"]["videoId"] for item in items]
+    details_resp = requests.get(
+        "https://www.googleapis.com/youtube/v3/videos",
+        params={"part": "contentDetails,snippet", "id": ",".join(video_ids), "key": api_key},
+        timeout=15,
+    )
+    details_resp.raise_for_status()
+    details = {v["id"]: v for v in details_resp.json().get("items", [])}
+
+    results = []
+    for item in items:
+        vid_id = item["id"]["videoId"]
+        detail = details.get(vid_id)
+        if not detail:
+            continue
+        results.append({
+            "id": vid_id,
+            "title": item["snippet"]["title"],
+            "channel": item["snippet"]["channelTitle"],
+            "description": detail["snippet"]["description"],
+            "published_at": item["snippet"]["publishedAt"],
+            "published_at_precision": "exact",
+            "duration_min": parse_iso_duration_minutes(detail["contentDetails"]["duration"]),
+            "url": f"https://www.youtube.com/watch?v={vid_id}",
+        })
+    return results
+
+
+def search_youtube_channel_ytdlp(channel_url: str, published_after: str, max_results: int = 30) -> list[dict]:
+    """Fetch recent videos from a YouTube channel using yt-dlp (no API key required)."""
+    cutoff = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
+    cmd = [
+        "yt-dlp", "--flat-playlist", "--dump-single-json",
+        "--extractor-args", "youtubetab:approximate_date",
+        "--playlist-end", str(max_results),
+        f"{channel_url}/videos",
+    ]
+    cookies_browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "")
+    if cookies_browser:
+        cmd += ["--cookies-from-browser", cookies_browser]
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=True)
+    except FileNotFoundError:
+        raise RuntimeError("yt-dlp not found. Install with: pip install yt-dlp")
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr or ""
+        if "Sign in to confirm" in stderr or "bot" in stderr.lower():
+            raise RuntimeError(
+                "yt-dlp bot-check triggered. Set YTDLP_COOKIES_FROM_BROWSER=chrome "
+                "(or firefox/safari) to authenticate."
+            )
+        raise RuntimeError(f"yt-dlp failed: {stderr.strip()}")
+
+    entries = json.loads(proc.stdout).get("entries", []) or []
+    results = []
+    for entry in entries:
+        if not entry or not entry.get("id"):
+            continue
+        upload_date_str = entry.get("upload_date")
+        if upload_date_str:
+            upload_date = datetime.strptime(upload_date_str, "%Y%m%d").date()
+            if upload_date < cutoff:
+                continue
+            published_at = upload_date_to_iso8601(upload_date_str)
+            published_at_precision = "approximate"
+        elif entry.get("timestamp") is not None:
+            published_at = unix_timestamp_to_iso8601(entry.get("timestamp"))
+            published_at_precision = "approximate"
+            if published_at:
+                upload_date = datetime.fromisoformat(published_at.replace("Z", "+00:00")).date()
+                if upload_date < cutoff:
+                    continue
+        else:
+            published_at = None
+            published_at_precision = "unknown"
+
+        results.append({
+            "id": entry["id"],
+            "title": entry.get("title", ""),
+            "channel": entry.get("channel") or entry.get("uploader", ""),
+            "description": entry.get("description") or "",
+            "published_at": published_at,
+            "published_at_precision": published_at_precision,
+            "duration_min": round((entry.get("duration") or 0) / 60),
+            "url": f"https://www.youtube.com/watch?v={entry['id']}",
+        })
+
+    return results
+
+
+def search_youtube_ytdlp(
+    query: str,
+    published_after: str,
+    max_results: int = 20,
+    use_this_month_filter: bool = False,
+) -> list[dict]:
     """Fallback YouTube search using yt-dlp (no API key required).
 
     Uses --flat-playlist for a fast initial search, returning results without
@@ -136,9 +277,15 @@ def search_youtube_ytdlp(query: str, published_after: str, max_results: int = 20
     a bot-check error.
     """
     cutoff = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
+    search_target = (
+        youtube_search_results_url(query, YOUTUBE_SEARCH_SP_THIS_MONTH)
+        if use_this_month_filter else f"ytsearch{max_results * 3}:{query}"
+    )
     cmd = [
         "yt-dlp", "--flat-playlist", "--dump-single-json",
-        f"ytsearch{max_results * 3}:{query}",
+        "--extractor-args", "youtubetab:approximate_date",
+        "--playlist-end", str(max_results * 3),
+        search_target,
     ]
     cookies_browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "")
     if cookies_browser:
@@ -168,11 +315,18 @@ def search_youtube_ytdlp(query: str, published_after: str, max_results: int = 20
             upload_date = datetime.strptime(upload_date_str, "%Y%m%d").date()
             if upload_date < cutoff:
                 continue
-            published_at = (
-                f"{upload_date_str[:4]}-{upload_date_str[4:6]}-{upload_date_str[6:]}T00:00:00Z"
-            )
+            published_at = upload_date_to_iso8601(upload_date_str)
+            published_at_precision = "approximate"
+        elif entry.get("timestamp") is not None:
+            published_at = unix_timestamp_to_iso8601(entry.get("timestamp"))
+            published_at_precision = "approximate"
+            if published_at:
+                upload_date = datetime.fromisoformat(published_at.replace("Z", "+00:00")).date()
+                if upload_date < cutoff:
+                    continue
         else:
-            published_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            published_at = None
+            published_at_precision = "unknown"
 
         results.append({
             "id": entry["id"],
@@ -180,6 +334,7 @@ def search_youtube_ytdlp(query: str, published_after: str, max_results: int = 20
             "channel": entry.get("channel") or entry.get("uploader", ""),
             "description": entry.get("description") or "",
             "published_at": published_at,
+            "published_at_precision": published_at_precision,
             "duration_min": round((entry.get("duration") or 0) / 60),
             "url": f"https://www.youtube.com/watch?v={entry['id']}",
         })
@@ -194,29 +349,38 @@ class YtdlpBotCheck(Exception):
     pass
 
 
-def ytdlp_fetch_description(video_id: str, cookies_browser: str = "") -> str:
-    """Fetch full description for a single video using yt-dlp -J.
+def ytdlp_fetch_video_metadata(video_id: str, cookies_browser: str = "") -> dict:
+    """Fetch full metadata for a single video using yt-dlp -J.
 
     Raises YtdlpBotCheck if YouTube returns a bot-check error.
-    Returns empty string on other errors (e.g. video unavailable).
+    Returns an empty dict on other errors (e.g. video unavailable).
     """
     cmd = ["yt-dlp", "-J", f"https://www.youtube.com/watch?v={video_id}"]
     if cookies_browser:
         cmd += ["--cookies-from-browser", cookies_browser]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=True)
-        return json.loads(proc.stdout).get("description") or ""
+        info = json.loads(proc.stdout)
+        published_at = (
+            unix_timestamp_to_iso8601(info.get("timestamp"))
+            or upload_date_to_iso8601(info.get("upload_date"))
+        )
+        metadata = {"description": info.get("description") or ""}
+        if published_at:
+            metadata["published_at"] = published_at
+            metadata["published_at_precision"] = "exact"
+        return metadata
     except subprocess.CalledProcessError as e:
         stderr = e.stderr or ""
         if "Sign in to confirm" in stderr or "bot" in stderr.lower():
             raise YtdlpBotCheck()
-        return ""
+        return {}
     except (json.JSONDecodeError, subprocess.TimeoutExpired):
-        return ""
+        return {}
 
 
 def enrich_ytdlp_descriptions(candidates: list[dict], delay: float = 1.5) -> None:
-    """Fetch full descriptions for candidates in-place, with a delay between requests.
+    """Fetch full metadata for candidates in-place, with a delay between requests.
 
     Stops early if YouTube triggers a bot-check and prints a tip.
     """
@@ -227,7 +391,12 @@ def enrich_ytdlp_descriptions(candidates: list[dict], delay: float = 1.5) -> Non
             time.sleep(delay)
         print(f"  [{i + 1}/{len(candidates)}] {video['title'][:70]}")
         try:
-            video["description"] = ytdlp_fetch_description(video["id"], cookies_browser)
+            metadata = ytdlp_fetch_video_metadata(video["id"], cookies_browser)
+            if metadata.get("description"):
+                video["description"] = metadata["description"]
+            if metadata.get("published_at"):
+                video["published_at"] = metadata["published_at"]
+                video["published_at_precision"] = metadata["published_at_precision"]
         except YtdlpBotCheck:
             print(
                 "  [bot-check] YouTube requires authentication for remaining descriptions.\n"
@@ -312,15 +481,29 @@ def cmd_fetch_candidates(args) -> None:
     """Search YouTube, apply heuristic filters, write candidates.json."""
     config = load_config()
     state = load_state()
+    ytdlp_search_config = config.get("ytdlp_search", {})
+    use_this_month_filter = ytdlp_search_config.get("use_this_month_filter", False)
 
     api_key = os.environ.get("YOUTUBE_API_KEY", "")
+    ytdlp_enabled = ytdlp_search_config.get("enabled", False)
+
     if api_key:
         def do_search(query: str, published_after: str) -> list[dict]:
             return search_youtube(query, published_after, api_key)
-    else:
+    elif ytdlp_enabled:
         print("No YOUTUBE_API_KEY set — using yt-dlp fallback (date filtering approximate).\n")
         def do_search(query: str, published_after: str) -> list[dict]:
-            return search_youtube_ytdlp(query, published_after)
+            return search_youtube_ytdlp(
+                query,
+                published_after,
+                use_this_month_filter=use_this_month_filter,
+            )
+    else:
+        print(
+            "No YOUTUBE_API_KEY set and yt-dlp fallback is disabled.\n"
+            "Set YOUTUBE_API_KEY, or set ytdlp_search.enabled: true in config.yaml to use yt-dlp."
+        )
+        return
 
     min_duration = config.get("min_duration_minutes", 20)
     lookback_days = args.lookback_days or config.get("lookback_days", 5)
@@ -332,8 +515,11 @@ def cmd_fetch_candidates(args) -> None:
 
     seen_ids: set[str] = set(state.get("seen_ids", []))
     all_candidates: list[dict] = []
+    limit = args.limit  # None means no limit
 
-    for leader in config.get("thought_leaders", []):
+    ytdlp_delay = 0.5  # seconds between yt-dlp search calls to avoid bot-checks
+
+    for leader in config.get("thought_leaders", [])[:limit]:
         print(f"Person: {leader['name']}...")
         try:
             videos = do_search(leader["search_query"], published_after)
@@ -343,10 +529,12 @@ def cmd_fetch_candidates(args) -> None:
         all_candidates.extend(
             collect_candidates(videos, leader["name"], seen_ids, min_duration)
         )
+        if not api_key:
+            time.sleep(ytdlp_delay)
 
     topics_config = config.get("topics", {})
     if topics_config.get("enabled", False):
-        for topic in topics_config.get("searches", []):
+        for topic in topics_config.get("searches", [])[:limit]:
             topic_name = topic["name"]
             topic_min = topic.get("min_duration_minutes", min_duration)
             print(f"Topic: {topic_name}...")
@@ -358,9 +546,38 @@ def cmd_fetch_candidates(args) -> None:
             all_candidates.extend(
                 collect_candidates(videos, f"Topic: {topic_name}", seen_ids, topic_min)
             )
+            if not api_key:
+                time.sleep(ytdlp_delay)
 
-    if not api_key and all_candidates:
-        enrich_ytdlp_descriptions(all_candidates)
+    channels_config = config.get("channels", {})
+    if channels_config.get("enabled", False):
+        for channel in channels_config.get("list", [])[:limit]:
+            channel_name = channel["name"]
+            print(f"Channel: {channel_name}...")
+            try:
+                if api_key and channel.get("channel_id"):
+                    videos = search_youtube_channel(channel["channel_id"], published_after, api_key)
+                elif channel.get("url") and ytdlp_enabled:
+                    videos = search_youtube_channel_ytdlp(channel["url"], published_after)
+                    time.sleep(ytdlp_delay)
+                else:
+                    reason = "no url configured" if not channel.get("url") else "yt-dlp fallback disabled (set ytdlp_search.enabled: true)"
+                    print(f"  Skipping: {reason}")
+                    continue
+            except (requests.exceptions.RequestException, RuntimeError) as e:
+                print(f"  Search error: {e}")
+                continue
+            all_candidates.extend(
+                collect_candidates(videos, f"Channel: {channel_name}", seen_ids, min_duration)
+            )
+
+    # Backfill exact metadata for yt-dlp candidates when non-flat extraction is available.
+    needs_enrichment = [
+        c for c in all_candidates
+        if not c.get("description") or c.get("published_at_precision") != "exact"
+    ]
+    if needs_enrichment:
+        enrich_ytdlp_descriptions(needs_enrichment)
 
     with open(CANDIDATES_FILE, "w") as f:
         json.dump(all_candidates, f, indent=2)
@@ -407,6 +624,14 @@ def cmd_commit(args) -> None:
         print("None of the provided IDs matched candidates.json.")
         return
 
+    missing_dates = [v for v in accepted if not v.get("published_at")]
+    if missing_dates:
+        print("The following accepted items are missing published_at and cannot be added to RSS:")
+        for video in missing_dates:
+            print(f"  {video['id']}: {video['title']}")
+        print("Re-run --fetch-candidates with YOUTUBE_API_KEY or YTDLP_COOKIES_FROM_BROWSER to backfill dates.")
+        return
+
     state = load_state()
     tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -414,7 +639,8 @@ def cmd_commit(args) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(days=RSS_RETENTION_DAYS)
     existing_items = [
         i for i in state.get("items", [])
-        if datetime.fromisoformat(i["published_at"].replace("Z", "+00:00")) > cutoff
+        if i.get("published_at")
+        and datetime.fromisoformat(i["published_at"].replace("Z", "+00:00")) > cutoff
     ]
     all_items = accepted + existing_items
     rss_content = build_rss(all_items)
@@ -459,7 +685,9 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true",
                         help="Preview without writing files or updating state; Telegram still fires (prefixed [DRY RUN])")
     parser.add_argument("--lookback-days", type=int, default=None,
-                        help="How many days back to search (overrides state's last_checked)")
+                        help="How many days back to search (overrides config's lookback_days)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Process only the first N entries per category (useful for testing)")
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fetch-candidates", action="store_true",
