@@ -106,7 +106,6 @@ def search_youtube(query: str, published_after: str, api_key: str) -> list[dict]
             "q": query,
             "type": "video",
             "videoDuration": "long",
-            "order": "date",
             "publishedAfter": published_after,
             "maxResults": 20,
             "key": api_key,
