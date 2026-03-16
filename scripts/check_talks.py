@@ -491,7 +491,11 @@ def send_telegram(bot_token: str, chat_id: str, talks: list[dict], dry_run: bool
     for text in build_notification_chunks(talks, dry_run=dry_run):
         requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text},
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "link_preview_options": {"is_disabled": True},
+            },
             timeout=10,
         ).raise_for_status()
 
