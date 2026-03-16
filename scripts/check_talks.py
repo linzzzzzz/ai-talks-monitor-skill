@@ -460,7 +460,13 @@ def display_source(video: dict) -> str:
     return ""
 
 
-def build_notification_chunks(talks: list[dict], dry_run: bool = False, max_chars: int = 3500) -> list[str]:
+def build_notification_chunks(
+    talks: list[dict],
+    dry_run: bool = False,
+    max_chars: int = 3500,
+    language: str = "original",
+    include_excerpt: bool = False,
+) -> list[str]:
     max_chars = 3500
     header = f"AI Talks Monitor: {len(talks)} new talk(s)"
     if dry_run:
@@ -471,15 +477,25 @@ def build_notification_chunks(talks: list[dict], dry_run: bool = False, max_char
 
     for index, video in enumerate(talks, start=1):
         source = display_source(video)
+        title = video.get("title_zh") if language == "zh" else None
         meta = f"{source} · {video['duration_min']} min" if source else f"{video['duration_min']} min"
+        excerpt = ""
+        if include_excerpt:
+            excerpt = notification_excerpt(video, language=language)
+        excerpt_block = f"\n{excerpt}" if excerpt else ""
+        divider = "\n\n──────────\n" if index > 1 else "\n\n"
         item_block = (
-            f"\n\n{index}. [{video['label']}] {video['title']}\n"
+            f"{divider}{index}. [{video['label']}] {title or video['title']}\n"
             f"{meta}\n"
-            f"{video['url']}"
+            f"{excerpt_block}"
+            f"\n\n{video['url']}"
         )
         if len(current) + len(item_block) > max_chars:
             chunks.append(current)
-            current = f"{header} (cont.){item_block}"
+            current = (
+                f"{header} (cont.)\n\n{index}. [{video['label']}] {title or video['title']}\n"
+                f"{meta}{excerpt_block}\n\n{video['url']}"
+            )
         else:
             current += item_block
 
@@ -487,8 +503,20 @@ def build_notification_chunks(talks: list[dict], dry_run: bool = False, max_char
     return chunks
 
 
-def send_telegram(bot_token: str, chat_id: str, talks: list[dict], dry_run: bool = False) -> None:
-    for text in build_notification_chunks(talks, dry_run=dry_run):
+def send_telegram(
+    bot_token: str,
+    chat_id: str,
+    talks: list[dict],
+    dry_run: bool = False,
+    language: str = "original",
+    include_excerpt: bool = False,
+) -> None:
+    for text in build_notification_chunks(
+        talks,
+        dry_run=dry_run,
+        language=language,
+        include_excerpt=include_excerpt,
+    ):
         requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
             json={
@@ -507,11 +535,18 @@ def send_openclaw(
     talks: list[dict],
     account: str = "",
     dry_run: bool = False,
+    language: str = "original",
+    include_excerpt: bool = False,
 ) -> None:
     if not shutil.which(binary):
         raise RuntimeError(f"OpenClaw binary not found on PATH: {binary}")
 
-    for text in build_notification_chunks(talks, dry_run=dry_run):
+    for text in build_notification_chunks(
+        talks,
+        dry_run=dry_run,
+        language=language,
+        include_excerpt=include_excerpt,
+    ):
         cmd = [
             binary, "message", "send",
             "--channel", channel,
@@ -528,17 +563,32 @@ def notify_talks(config: dict, talks: list[dict], dry_run: bool = False) -> None
         return
 
     notifications = config.get("notifications", {})
-    backend = notifications.get("backend", "telegram")
+    backend = notifications.get("backend", "native")
+    language = notifications.get("language", "original")
+    include_excerpt = notifications.get("include_excerpt", False)
 
     if backend == "none":
         print("(Notifications disabled)")
         return
 
-    if backend == "telegram":
+    if backend in {"native", "telegram"}:
+        native_config = notifications.get("native", {})
+        channel = (native_config.get("channel") or "telegram").strip() or "telegram"
+        target = (native_config.get("target") or "").strip()
+        if channel != "telegram":
+            print(f"(Unsupported native notification channel: {channel})")
+            return
         tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        tg_chat_id = target or os.environ.get("TELEGRAM_CHAT_ID", "")
         if tg_token and tg_chat_id:
-            send_telegram(tg_token, tg_chat_id, talks, dry_run=dry_run)
+            send_telegram(
+                tg_token,
+                tg_chat_id,
+                talks,
+                dry_run=dry_run,
+                language=language,
+                include_excerpt=include_excerpt,
+            )
         else:
             print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set)")
         return
@@ -552,10 +602,47 @@ def notify_talks(config: dict, talks: list[dict], dry_run: bool = False) -> None
         if not channel or not target:
             print("(OpenClaw notifications configured, but notifications.openclaw.channel/target is missing)")
             return
-        send_openclaw(binary, channel, target, talks, account=account, dry_run=dry_run)
+        send_openclaw(
+            binary,
+            channel,
+            target,
+            talks,
+            account=account,
+            dry_run=dry_run,
+            language=language,
+            include_excerpt=include_excerpt,
+        )
         return
 
     print(f"(Unknown notifications.backend: {backend})")
+
+
+def notification_excerpt(video: dict, language: str = "original", max_chars: int = 300) -> str:
+    text = (
+        video.get("description_zh")
+        if language == "zh"
+        else video.get("description_clean") or video.get("description")
+    ) or ""
+    if not text:
+        return ""
+
+    lines = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if re.match(r"^\d{1,2}:\d{2}(?::\d{2})?\s*[-–—]", line):
+            continue
+        if re.search(r"https?://|www\.", line):
+            continue
+        if line.startswith("#"):
+            continue
+        lines.append(line)
+        if len(" ".join(lines)) >= max_chars:
+            break
+
+    compact = re.sub(r"\s+", " ", " ".join(lines)).strip()
+    return compact
 
 
 def print_accepted_items(talks: list[dict], prefer_zh: bool = False) -> None:
@@ -821,12 +908,12 @@ def cmd_commit(args) -> None:
         print_accepted_items(accepted)
     else:
         notify_talks(config, accepted)
-        if backend == "telegram" and not (
+        if backend in {"native", "telegram"} and not (
             os.environ.get("TELEGRAM_BOT_TOKEN", "") and os.environ.get("TELEGRAM_CHAT_ID", "")
         ):
             print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
             print_accepted_items(accepted)
-        elif backend not in {"telegram", "openclaw"}:
+        elif backend not in {"native", "telegram", "openclaw"}:
             print_accepted_items(accepted)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -943,12 +1030,12 @@ def cmd_commit_file(args) -> None:
         print_accepted_items(accepted, prefer_zh=True)
     else:
         notify_talks(config, accepted)
-        if backend == "telegram" and not (
+        if backend in {"native", "telegram"} and not (
             os.environ.get("TELEGRAM_BOT_TOKEN", "") and os.environ.get("TELEGRAM_CHAT_ID", "")
         ):
             print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
             print_accepted_items(accepted, prefer_zh=True)
-        elif backend not in {"telegram", "openclaw"}:
+        elif backend not in {"native", "telegram", "openclaw"}:
             print_accepted_items(accepted, prefer_zh=True)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

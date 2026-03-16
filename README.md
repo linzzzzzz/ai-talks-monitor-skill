@@ -65,8 +65,8 @@ pip install requests pyyaml
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `YOUTUBE_API_KEY` | Recommended | YouTube Data API v3. Free — get one from [Google Cloud Console](https://console.cloud.google.com). If absent, falls back to yt-dlp. |
-| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token. Only needed when `notifications.backend: "telegram"`. |
-| `TELEGRAM_CHAT_ID` | No | Telegram chat or channel ID. Only needed when `notifications.backend: "telegram"`. |
+| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token. Only needed when `notifications.backend: "native"`. |
+| `TELEGRAM_CHAT_ID` | No | Telegram chat or channel ID. Optional when `notifications.backend: "native"` if you instead set `notifications.native.target` in config. |
 | `AI_TALKS_FEEDS_REPO` | No | Absolute path to a local git repo (e.g. `~/feeds`). If set, both `ai_talks.xml` and `ai_talks_zh.xml` are copied there and pushed automatically after each commit — keeping a GitHub Pages feed up to date. |
 
 If you already run OpenClaw and want to reuse its Telegram or Feishu channels, set `notifications.backend: "openclaw"` in `config.yaml` and configure `notifications.openclaw.channel/target` instead of using the raw Telegram env vars.
@@ -138,7 +138,12 @@ Notification delivery is configured separately:
 
 ```yaml
 notifications:
-  backend: "openclaw"
+  backend: "openclaw"   # "native", "openclaw", or "none"
+  language: "zh"        # or "original" — controls titles used in chat notifications
+  include_excerpt: true # add one short description line per item
+  native:
+    channel: "telegram"
+    target: "123456789"  # Telegram chat ID for built-in Telegram delivery
   openclaw:
     binary: "openclaw"
     channel: "telegram"  # or "feishu"
@@ -146,7 +151,10 @@ notifications:
     account: ""          # optional OpenClaw account id
 ```
 
-Use `backend: "telegram"` to keep the current direct Telegram Bot API path, or `backend: "none"` to disable notifications.
+Set `notifications.language: "zh"` if you want chat notifications to prefer `title_zh` when available.
+Set `notifications.include_excerpt: true` if you want each chat notification item to include one short description line in addition to title, source, duration, and link.
+
+Use `backend: "native"` for the built-in Telegram sender, `backend: "openclaw"` to route through OpenClaw (Telegram or Feishu), or `backend: "none"` to disable notifications.
 
 **Person watchlist:** Each person gets an exact YouTube search. Claude verifies the person is an actual participant, not just the subject of a reaction or news video.
 

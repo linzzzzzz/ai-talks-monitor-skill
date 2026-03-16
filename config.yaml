@@ -129,11 +129,16 @@ ytdlp_search:
 
 # Notification delivery after --commit / --commit-file.
 # backend:
-#   - "telegram"  → direct Telegram Bot API via TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+#   - "native"    → direct built-in delivery (currently Telegram only)
 #   - "openclaw"  → hand off delivery to `openclaw message send`
 #   - "none"      → disable notifications
 notifications:
   backend: "openclaw"
+  language: "zh"   # "original" or "zh" — controls titles used in chat notifications
+  include_excerpt: true  # include a short one-line description excerpt in chat notifications
+  native:
+    channel: "telegram"
+    target: ""            # Telegram chat id / channel id for built-in Telegram delivery
   openclaw:
     binary: "openclaw"
     channel: "feishu"   # "telegram" or "feishu"
