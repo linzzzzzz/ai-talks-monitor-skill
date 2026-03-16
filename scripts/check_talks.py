@@ -37,7 +37,9 @@ SKILL_DIR = Path(__file__).parent.parent
 CONFIG_FILE = SKILL_DIR / "config.yaml"
 STATE_FILE = SKILL_DIR / "state.json"
 RSS_FILE = SKILL_DIR / "ai_talks.xml"
+RSS_FILE_ZH = SKILL_DIR / "ai_talks_zh.xml"
 CANDIDATES_FILE = SKILL_DIR / "candidates.json"
+ACCEPTED_FILE = SKILL_DIR / "accepted.json"
 
 RSS_RETENTION_DAYS = 30
 YOUTUBE_SEARCH_SP_THIS_MONTH = "EgIIBA%253D%253D"
@@ -59,7 +61,26 @@ def load_state() -> dict:
     if STATE_FILE.exists():
         with open(STATE_FILE) as f:
             return json.load(f)
-    return {"seen_ids": [], "last_checked": None, "items": []}
+    return {"seen_ids": {}, "last_checked": None, "items": []}
+
+
+def load_seen_ids(state: dict) -> dict[str, str]:
+    """Return seen_ids as {id: seen_at_iso} dict, migrating from legacy list format."""
+    raw = state.get("seen_ids", [])
+    if isinstance(raw, list):
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {vid_id: now for vid_id in raw}
+    return dict(raw)
+
+
+def prune_seen_ids(seen_ids: dict[str, str], retention_days: int) -> dict[str, str]:
+    """Remove entries older than retention_days."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    return {
+        vid_id: seen_at
+        for vid_id, seen_at in seen_ids.items()
+        if datetime.fromisoformat(seen_at.replace("Z", "+00:00")) > cutoff
+    }
 
 
 def save_state(state: dict) -> None:
@@ -194,7 +215,7 @@ def search_youtube_channel(channel_id: str, published_after: str, api_key: str) 
     return results
 
 
-def search_youtube_channel_ytdlp(channel_url: str, published_after: str, max_results: int = 30) -> list[dict]:
+def search_youtube_channel_ytdlp(channel_url: str, published_after: str, max_results: int = 30, cookies_browser: str = "") -> list[dict]:
     """Fetch recent videos from a YouTube channel using yt-dlp (no API key required)."""
     cutoff = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
     cmd = [
@@ -203,7 +224,6 @@ def search_youtube_channel_ytdlp(channel_url: str, published_after: str, max_res
         "--playlist-end", str(max_results),
         f"{channel_url}/videos",
     ]
-    cookies_browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "")
     if cookies_browser:
         cmd += ["--cookies-from-browser", cookies_browser]
 
@@ -215,8 +235,8 @@ def search_youtube_channel_ytdlp(channel_url: str, published_after: str, max_res
         stderr = e.stderr or ""
         if "Sign in to confirm" in stderr or "bot" in stderr.lower():
             raise RuntimeError(
-                "yt-dlp bot-check triggered. Set YTDLP_COOKIES_FROM_BROWSER=chrome "
-                "(or firefox/safari) to authenticate."
+                "yt-dlp bot-check triggered. Set ytdlp_search.cookies_from_browser: chrome "
+                "(or firefox/safari) in config.yaml to authenticate."
             )
         raise RuntimeError(f"yt-dlp failed: {stderr.strip()}")
 
@@ -262,6 +282,7 @@ def search_youtube_ytdlp(
     published_after: str,
     max_results: int = 20,
     use_this_month_filter: bool = False,
+    cookies_browser: str = "",
 ) -> list[dict]:
     """Fallback YouTube search using yt-dlp (no API key required).
 
@@ -272,7 +293,7 @@ def search_youtube_ytdlp(
     Note: date filtering is approximate — yt-dlp doesn't support publishedAfter
     at query time, so we fetch 3x results and filter by upload_date post-fetch.
 
-    Set YTDLP_COOKIES_FROM_BROWSER=chrome (or firefox/safari) if YouTube returns
+    Set ytdlp_search.cookies_from_browser in config.yaml if YouTube returns
     a bot-check error.
     """
     cutoff = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
@@ -286,7 +307,6 @@ def search_youtube_ytdlp(
         "--playlist-end", str(max_results * 3),
         search_target,
     ]
-    cookies_browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "")
     if cookies_browser:
         cmd += ["--cookies-from-browser", cookies_browser]
 
@@ -298,8 +318,8 @@ def search_youtube_ytdlp(
         stderr = e.stderr or ""
         if "Sign in to confirm" in stderr or "bot" in stderr.lower():
             raise RuntimeError(
-                "yt-dlp bot-check triggered. Set YTDLP_COOKIES_FROM_BROWSER=chrome "
-                "(or firefox/safari) to authenticate."
+                "yt-dlp bot-check triggered. Set ytdlp_search.cookies_from_browser: chrome "
+                "(or firefox/safari) in config.yaml to authenticate."
             )
         raise RuntimeError(f"yt-dlp failed: {stderr.strip()}")
 
@@ -378,12 +398,11 @@ def ytdlp_fetch_video_metadata(video_id: str, cookies_browser: str = "") -> dict
         return {}
 
 
-def enrich_ytdlp_descriptions(candidates: list[dict], delay: float = 1.5) -> None:
+def enrich_ytdlp_descriptions(candidates: list[dict], delay: float = 1.5, cookies_browser: str = "") -> None:
     """Fetch full metadata for candidates in-place, with a delay between requests.
 
     Stops early if YouTube triggers a bot-check and prints a tip.
     """
-    cookies_browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "")
     print(f"\nFetching descriptions for {len(candidates)} candidate(s) (yt-dlp, {delay}s delay)...")
     for i, video in enumerate(candidates):
         if i > 0:
@@ -399,7 +418,7 @@ def enrich_ytdlp_descriptions(candidates: list[dict], delay: float = 1.5) -> Non
         except YtdlpBotCheck:
             print(
                 "  [bot-check] YouTube requires authentication for remaining descriptions.\n"
-                "  Set YTDLP_COOKIES_FROM_BROWSER=chrome (or firefox/safari) to enable full descriptions."
+                "  Set ytdlp_search.cookies_from_browser: chrome (or firefox/safari) in config.yaml."
             )
             break
 
@@ -467,9 +486,41 @@ def build_rss(items: list[dict]) -> str:
         ET.SubElement(item, "guid", isPermaLink="false").text = item_data["id"]
         ET.SubElement(item, "pubDate").text = youtube_ts_to_rfc2822(item_data["published_at"])
         ET.SubElement(item, "author").text = item_data["channel"]
+        description = item_data.get("description_clean") or item_data.get("description", "")
         ET.SubElement(item, "description").text = (
             f"{item_data['channel']} · {item_data['duration_min']} min\n\n"
-            f"{item_data['description']}"
+            f"{description}"
+        )
+
+    ET.indent(rss, space="  ")
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(rss, encoding="unicode")
+
+
+def build_rss_zh(items: list[dict]) -> str:
+    """Build a Chinese RSS feed using title_zh and description_zh fields where available."""
+    rss = ET.Element("rss", version="2.0")
+    channel = ET.SubElement(rss, "channel")
+
+    ET.SubElement(channel, "title").text = "AI大咖讲座精选 (YouTube)"
+    ET.SubElement(channel, "link").text = "https://www.youtube.com"
+    ET.SubElement(channel, "description").text = "精选AI思想领袖的长篇访谈与演讲，由Claude筛选整理。"
+    ET.SubElement(channel, "lastBuildDate").text = format_datetime(datetime.now(timezone.utc))
+
+    for item_data in items:
+        item = ET.SubElement(channel, "item")
+        title = item_data.get("title_zh") or item_data["title"]
+        ET.SubElement(item, "title").text = f"[{item_data['label']}] {title}"
+        ET.SubElement(item, "link").text = item_data["url"]
+        ET.SubElement(item, "guid", isPermaLink="false").text = item_data["id"]
+        ET.SubElement(item, "pubDate").text = youtube_ts_to_rfc2822(item_data["published_at"])
+        ET.SubElement(item, "author").text = item_data["channel"]
+        summary = (
+            item_data.get("description_zh")
+            or item_data.get("description_clean")
+            or item_data.get("description", "")
+        )
+        ET.SubElement(item, "description").text = (
+            f"{item_data['channel']} · {item_data['duration_min']} 分钟\n\n{summary}"
         )
 
     ET.indent(rss, space="  ")
@@ -485,6 +536,7 @@ def cmd_fetch_candidates(args) -> None:
 
     api_key = os.environ.get("YOUTUBE_API_KEY", "")
     ytdlp_enabled = ytdlp_search_config.get("enabled", False)
+    cookies_browser = ytdlp_search_config.get("cookies_from_browser") or ""
 
     if api_key:
         def do_search(query: str, published_after: str) -> list[dict]:
@@ -496,6 +548,7 @@ def cmd_fetch_candidates(args) -> None:
                 query,
                 published_after,
                 use_this_month_filter=use_this_month_filter,
+                cookies_browser=cookies_browser,
             )
     else:
         print(
@@ -512,7 +565,7 @@ def cmd_fetch_candidates(args) -> None:
 
     print(f"Searching for videos published after {published_after} ({lookback_days}d rolling window)\n")
 
-    seen_ids: set[str] = set(state.get("seen_ids", []))
+    seen_ids: set[str] = set(load_seen_ids(state).keys())
     all_candidates: list[dict] = []
     limit = args.limit  # None means no limit
 
@@ -557,7 +610,7 @@ def cmd_fetch_candidates(args) -> None:
                 if api_key and channel.get("channel_id"):
                     videos = search_youtube_channel(channel["channel_id"], published_after, api_key)
                 elif channel.get("url") and ytdlp_enabled:
-                    videos = search_youtube_channel_ytdlp(channel["url"], published_after)
+                    videos = search_youtube_channel_ytdlp(channel["url"], published_after, cookies_browser=cookies_browser)
                     time.sleep(ytdlp_delay)
                 else:
                     reason = "no url configured" if not channel.get("url") else "yt-dlp fallback disabled (set ytdlp_search.enabled: true)"
@@ -576,7 +629,7 @@ def cmd_fetch_candidates(args) -> None:
         if not c.get("description") or c.get("published_at_precision") != "exact"
     ]
     if needs_enrichment:
-        enrich_ytdlp_descriptions(needs_enrichment)
+        enrich_ytdlp_descriptions(needs_enrichment, cookies_browser=cookies_browser)
 
     with open(CANDIDATES_FILE, "w") as f:
         json.dump(all_candidates, f, indent=2)
@@ -584,15 +637,17 @@ def cmd_fetch_candidates(args) -> None:
     print(f"\n{len(all_candidates)} candidate(s) written to {CANDIDATES_FILE}")
 
 
-def push_to_feeds_repo(rss_file: Path, feeds_repo: Path, dry_run: bool = False) -> None:
-    """Copy ai_talks.xml into the feeds repo and push to origin."""
-    dest = feeds_repo / rss_file.name
+def push_to_feeds_repo(rss_files: list[Path], feeds_repo: Path, dry_run: bool = False) -> None:
+    """Copy RSS files into the feeds repo and push to origin."""
     if dry_run:
-        print(f"[DRY RUN] Would copy {rss_file} → {dest} and push")
+        for f in rss_files:
+            print(f"[DRY RUN] Would copy {f} → {feeds_repo / f.name} and push")
         return
-    shutil.copy(rss_file, dest)
+    for f in rss_files:
+        shutil.copy(f, feeds_repo / f.name)
     try:
-        subprocess.run(["git", "-C", str(feeds_repo), "add", rss_file.name], check=True)
+        for f in rss_files:
+            subprocess.run(["git", "-C", str(feeds_repo), "add", f.name], check=True)
         result = subprocess.run(
             ["git", "-C", str(feeds_repo), "commit", "-m", "update ai_talks feed"],
             capture_output=True, text=True,
@@ -602,7 +657,7 @@ def push_to_feeds_repo(rss_file: Path, feeds_repo: Path, dry_run: bool = False) 
             return
         result.check_returncode()
         subprocess.run(["git", "-C", str(feeds_repo), "push"], check=True)
-        print(f"Pushed {rss_file.name} to {feeds_repo}")
+        print(f"Pushed {[f.name for f in rss_files]} to {feeds_repo}")
     except subprocess.CalledProcessError as e:
         print(f"Feeds repo push failed: {e}")
 
@@ -628,7 +683,7 @@ def cmd_commit(args) -> None:
         print("The following accepted items are missing published_at and cannot be added to RSS:")
         for video in missing_dates:
             print(f"  {video['id']}: {video['title']}")
-        print("Re-run --fetch-candidates with YOUTUBE_API_KEY or YTDLP_COOKIES_FROM_BROWSER to backfill dates.")
+        print("Re-run --fetch-candidates with YOUTUBE_API_KEY set, or set ytdlp_search.cookies_from_browser in config.yaml to backfill dates.")
         return
 
     state = load_state()
@@ -654,7 +709,7 @@ def cmd_commit(args) -> None:
         print(f"\n[DRY RUN] Would write {len(accepted)} new item(s) to {RSS_FILE}")
         feeds_repo = os.environ.get("AI_TALKS_FEEDS_REPO", "")
         if feeds_repo:
-            push_to_feeds_repo(RSS_FILE, Path(feeds_repo), dry_run=True)
+            push_to_feeds_repo([RSS_FILE], Path(feeds_repo), dry_run=True)
         return
 
     RSS_FILE.write_text(rss_content, encoding="utf-8")
@@ -667,16 +722,143 @@ def cmd_commit(args) -> None:
         for v in accepted:
             print(f"  {v['label']}: {v['title']}\n  {v['url']}\n")
 
-    seen_ids = set(state.get("seen_ids", [])) | {v["id"] for v in accepted}
-    state["seen_ids"] = list(seen_ids)
-    state["last_checked"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    seen_dict = load_seen_ids(state)
+    for v in accepted:
+        seen_dict[v["id"]] = now
+    state["seen_ids"] = prune_seen_ids(seen_dict, RSS_RETENTION_DAYS)
+    state["last_checked"] = now
     state["items"] = all_items
     save_state(state)
     print("State updated.")
 
     feeds_repo = os.environ.get("AI_TALKS_FEEDS_REPO", "")
     if feeds_repo:
-        push_to_feeds_repo(RSS_FILE, Path(feeds_repo))
+        push_to_feeds_repo([RSS_FILE], Path(feeds_repo))
+
+
+def cmd_commit_file(args) -> None:
+    """Read accepted.json (with description_clean/title_zh/description_zh), write both English and Chinese RSS feeds."""
+    accepted_file = Path(args.commit_file)
+    if not accepted_file.exists():
+        print(f"File not found: {accepted_file}")
+        return
+
+    with open(accepted_file) as f:
+        raw = json.load(f)
+
+    # Support both new format {"accepted": [...], "rejected": [...]} and legacy list format.
+    if isinstance(raw, list):
+        accepted_entries = raw  # legacy list shape: [{id, description_clean, title_zh, description_zh}, ...]
+        rejected_ids: set[str] = set()
+    else:
+        accepted_entries = raw.get("accepted", [])
+        rejected_ids = set(raw.get("rejected", []))
+
+    if not CANDIDATES_FILE.exists():
+        print("No candidates.json found. Run --fetch-candidates first.")
+        return
+
+    with open(CANDIDATES_FILE) as f:
+        candidates = json.load(f)
+
+    candidates_by_id = {v["id"]: v for v in candidates}
+    accepted = []
+    for entry in accepted_entries:
+        vid = candidates_by_id.get(entry["id"])
+        if not vid:
+            print(f"  Warning: ID {entry['id']} not found in candidates.json, skipping.")
+            continue
+        video = dict(vid)
+        if entry.get("description_clean"):
+            video["description_clean"] = entry["description_clean"]
+        if entry.get("title_zh"):
+            video["title_zh"] = entry["title_zh"]
+        if entry.get("description_zh"):
+            video["description_zh"] = entry["description_zh"]
+        accepted.append(video)
+
+    if not accepted:
+        if rejected_ids:
+            # Still update state to mark rejected IDs as seen so they don't resurface.
+            state = load_state()
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            seen_dict = load_seen_ids(state)
+            for vid_id in rejected_ids:
+                seen_dict[vid_id] = now
+            state["seen_ids"] = prune_seen_ids(seen_dict, RSS_RETENTION_DAYS)
+            state["last_checked"] = now
+            save_state(state)
+            print(f"No new talks accepted. {len(rejected_ids)} rejected IDs recorded in state.")
+        else:
+            print("No valid IDs matched candidates.json.")
+        return
+
+    missing_dates = [v for v in accepted if not v.get("published_at")]
+    if missing_dates:
+        print("The following accepted items are missing published_at and cannot be added to RSS:")
+        for video in missing_dates:
+            print(f"  {video['id']}: {video['title']}")
+        print("Re-run --fetch-candidates with YOUTUBE_API_KEY set, or set ytdlp_search.cookies_from_browser in config.yaml to backfill dates.")
+        return
+
+    state = load_state()
+    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=RSS_RETENTION_DAYS)
+    existing_items = [
+        i for i in state.get("items", [])
+        if i.get("published_at")
+        and datetime.fromisoformat(i["published_at"].replace("Z", "+00:00")) > cutoff
+    ]
+    all_items = accepted + existing_items
+    rss_content = build_rss(all_items)
+    rss_zh_content = build_rss_zh(all_items)
+
+    if args.dry_run:
+        print("\n--- RSS (English) preview ---")
+        print(rss_content[:500] + "...")
+        print("\n--- RSS (Chinese) preview ---")
+        print(rss_zh_content[:500] + "...")
+        if tg_token and tg_chat_id:
+            send_telegram(tg_token, tg_chat_id, accepted, dry_run=True)
+        else:
+            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set)")
+        print(f"\n[DRY RUN] Would write {len(accepted)} new item(s) to {RSS_FILE} and {RSS_FILE_ZH}")
+        feeds_repo = os.environ.get("AI_TALKS_FEEDS_REPO", "")
+        if feeds_repo:
+            push_to_feeds_repo([RSS_FILE, RSS_FILE_ZH], Path(feeds_repo), dry_run=True)
+        return
+
+    RSS_FILE.write_text(rss_content, encoding="utf-8")
+    RSS_FILE_ZH.write_text(rss_zh_content, encoding="utf-8")
+    print(f"Wrote {len(all_items)} item(s) to {RSS_FILE} and {RSS_FILE_ZH}")
+
+    if tg_token and tg_chat_id:
+        send_telegram(tg_token, tg_chat_id, accepted)
+    else:
+        print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
+        for v in accepted:
+            print(f"  {v['label']}: {v.get('title_zh') or v['title']}\n  {v['url']}\n")
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    seen_dict = load_seen_ids(state)
+    for v in accepted:
+        seen_dict[v["id"]] = now
+    for vid_id in rejected_ids:  # definitive rejects — won't resurface
+        seen_dict[vid_id] = now
+    # IDs in neither accepted nor rejected_ids are left unmarked and will resurface
+    # next run (useful for candidates rejected due to missing description).
+    state["seen_ids"] = prune_seen_ids(seen_dict, RSS_RETENTION_DAYS)
+    state["last_checked"] = now
+    state["items"] = all_items
+    save_state(state)
+    print("State updated.")
+
+    feeds_repo = os.environ.get("AI_TALKS_FEEDS_REPO", "")
+    if feeds_repo:
+        push_to_feeds_repo([RSS_FILE, RSS_FILE_ZH], Path(feeds_repo))
 
 
 def main() -> None:
@@ -691,13 +873,17 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fetch-candidates", action="store_true",
                       help="Search YouTube, apply heuristic filter, write candidates.json")
+    mode.add_argument("--commit-file", metavar="FILE",
+                      help="Read accepted.json (with description_clean/title_zh/description_zh) and write both English and Chinese RSS feeds")
     mode.add_argument("--commit", nargs="+", metavar="ID",
-                      help="Accept these video IDs from candidates.json, write RSS, update state")
+                      help="Accept these video IDs from candidates.json, write English RSS only (no Chinese feed)")
 
     args = parser.parse_args()
 
     if args.fetch_candidates:
         cmd_fetch_candidates(args)
+    elif args.commit_file:
+        cmd_commit_file(args)
     else:
         cmd_commit(args)
 

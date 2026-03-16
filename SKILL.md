@@ -32,7 +32,6 @@ Supports three modes:
    - `TELEGRAM_BOT_TOKEN` — Telegram bot token (optional; get from @BotFather)
    - `TELEGRAM_CHAT_ID` — Telegram chat/channel ID to send notifications to (optional)
    - `AI_TALKS_FEEDS_REPO` — absolute path to a local git repo (optional; if set, `--commit` copies `ai_talks.xml` there and pushes automatically)
-   - `YTDLP_COOKIES_FROM_BROWSER` — browser name for yt-dlp cookie auth, e.g. `chrome`, `firefox`, `safari` (optional; set this if yt-dlp triggers YouTube bot-checks)
 
 2. Install Python dependencies:
    ```
@@ -58,7 +57,7 @@ Use `--limit N` to process only the first N entries per category — useful for 
 python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates --limit 2
 ```
 
-**Phase 2 — classify (your job):**
+**Phase 2 — classify and translate (your job):**
 
 First, read `SKILL_DIR/state.json` (if it exists) to load the `items` list — the recently committed talks. You'll need this for cross-run deduplication below.
 
@@ -76,19 +75,57 @@ Multiple candidates may be different channels reuploading the same underlying ev
 **Same-event deduplication — against state.json:**
 If a candidate appears to be the same event as a talk already in `state.json items` (same person, same event, similar timeframe), reject it even though the video ID is new.
 
-Reject low-confidence cases — it's better to miss a real talk than to include a reaction video or a duplicate.
+For each candidate, assign it to one of three buckets:
+- **Accept**: genuine first-person talk, enough information to be confident.
+- **Definitive reject**: clearly derivative, duplicate, or confirmed irrelevant — enough information to be certain it should never appear again.
+- **Uncertain**: not enough information to decide (e.g. description is empty or too vague, title is ambiguous). Leave these in neither bucket — they will resurface on the next run and can be re-evaluated once a description is available.
+
+For each **accepted** video, also generate:
+- `description_clean`: a cleaned version of the available video description in its original language
+- `title_zh`: a concise Chinese translation of the title (not a literal word-for-word translation — make it natural and informative)
+- `description_zh`: a Chinese translation of `description_clean`, written for a Chinese-speaking audience
+
+For `description_clean`:
+- Base it only on the available metadata you actually have: title, channel, and video description
+- Do not pretend you watched the full video
+- Remove unhelpful links, sponsor boilerplate, social handles, and repetitive calls to action
+- Keep useful structure such as chapter/timestamp topic breakdowns when they help readers understand the talk
+- If the source description is sparse, write a short, conservative cleaned blurb in the original language rather than inventing details
+
+For `description_zh`:
+- Translate `description_clean` faithfully into natural Chinese
+- Do not add any information not present in the metadata
+
+**Important:** `accepted.json` must be valid JSON. Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking the JSON string delimiters.
+
+Write `SKILL_DIR/accepted.json` with this structure:
+```json
+{
+  "accepted": [
+    {
+      "id": "VIDEO_ID",
+      "description_clean": "OpenAI CEO Sam Altman and Amazon CEO Andy Jassy discuss OpenAI's latest funding, AI infrastructure expansion, and where the industry is heading.",
+      "title_zh": "山姆·奥特曼与安迪·贾西对话：OpenAI融资与AI未来",
+      "description_zh": "OpenAI CEO 山姆·奥特曼与亚马逊 CEO 安迪·贾西在 CNBC 节目中讨论 OpenAI 最新融资、AI 基础设施扩张以及行业未来走向。"
+    }
+  ],
+  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"]
+}
+```
+
+IDs in neither `accepted` nor `rejected` are left unmarked in state and will reappear on the next run.
 
 **Phase 3 — commit accepted videos:**
 ```bash
-python3 SKILL_DIR/scripts/check_talks.py --commit VIDEO_ID_1 VIDEO_ID_2 ...
+python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/accepted.json
 ```
-Pass only the IDs you accepted. This writes `ai_talks.xml`, updates `state.json`, posts to Telegram if configured, and pushes to the feeds repo if `AI_TALKS_FEEDS_REPO` is set.
+This writes both `ai_talks.xml` (English) and `ai_talks_zh.xml` (Chinese titles and translated descriptions), updates `state.json`, posts to Telegram if configured, and pushes to the feeds repo if `AI_TALKS_FEEDS_REPO` is set.
 
-Note: `--commit` will refuse to publish any accepted item that still has no `published_at` date (can happen with yt-dlp fallback when the enrichment step hit a bot-check). If this occurs, re-run `--fetch-candidates` with `YOUTUBE_API_KEY` or `YTDLP_COOKIES_FROM_BROWSER` set to backfill dates, then retry `--commit`.
+Note: `--commit-file` will refuse to publish any item missing a `published_at` date (can happen with yt-dlp fallback). If this occurs, re-run `--fetch-candidates` with `YOUTUBE_API_KEY` set, or set `ytdlp_search.cookies_from_browser` in `config.yaml`, then retry.
 
-Use `--dry-run` with either phase to preview without writing files or updating state:
+Use `--dry-run` to preview without writing files or updating state:
 ```bash
-python3 SKILL_DIR/scripts/check_talks.py --commit ID1 ID2 --dry-run
+python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/accepted.json --dry-run
 ```
 
 After committing, report what was accepted to the user.
@@ -136,6 +173,7 @@ Read and display `thought_leaders`, `channels.list` (if enabled), and `topics.se
 - `lookback_days` — rolling search window in days (default: 5). Every run searches this far back.
 - `ytdlp_search.enabled` — set to `true` to enable yt-dlp as a fallback when `YOUTUBE_API_KEY` is not set (default: `false`). yt-dlp has known limitations: approximate date filtering, descriptions require per-video fetches that often hit bot-checks. Prefer setting `YOUTUBE_API_KEY`.
 - `ytdlp_search.use_this_month_filter` — when using yt-dlp fallback, optionally apply a YouTube-side "This month" prefilter before local date filtering (default: `true`). Reduces stale results but may also reduce recall; local date filtering remains the authoritative cutoff either way.
+- `ytdlp_search.cookies_from_browser` — browser to pull cookies from when using yt-dlp (`chrome`, `firefox`, or `safari`; default: `""`). Set this if yt-dlp hits YouTube bot-checks or if you want full video descriptions (descriptions require per-video fetches that fail without auth).
 
 ## Automated Daily Check
 
@@ -182,13 +220,18 @@ The fetch step can be scheduled unattended — `--fetch-candidates` only writes 
 
 ## TrendRadar integration
 
-`ai_talks.xml` is written on every run. Add it to TrendRadar's `config/config.yaml`:
+Both feeds are written on every `--commit-file` run. Add either or both to TrendRadar's `config/config.yaml`:
 ```yaml
 rss:
   feeds:
     - id: "ai-talks"
       name: "AI Thought Leader Talks"
       url: "file:///path/to/skills/ai-talks-monitor/ai_talks.xml"
+      max_age_days: 30
+      enabled: true
+    - id: "ai-talks-zh"
+      name: "AI大咖讲座精选"
+      url: "file:///path/to/skills/ai-talks-monitor/ai_talks_zh.xml"
       max_age_days: 30
       enabled: true
 ```
@@ -198,6 +241,8 @@ rss:
 - `SKILL.md` — this file
 - `scripts/check_talks.py` — main script: `--fetch-candidates` fetches to candidates.json; `--commit` writes RSS + state
 - `candidates.json` — auto-written by --fetch-candidates; read by you for classification
+- `accepted.json` — written by you during Phase 2 (IDs + description_clean + title_zh + description_zh); input to --commit-file
 - `config.yaml` — watchlist and settings (edit this to customize)
 - `state.json` — auto-managed: seen video IDs, last_checked timestamp, rolling item list
-- `ai_talks.xml` — auto-generated RSS 2.0 feed
+- `ai_talks.xml` — auto-generated RSS 2.0 feed (English)
+- `ai_talks_zh.xml` — auto-generated RSS 2.0 feed (Chinese titles and translated descriptions)

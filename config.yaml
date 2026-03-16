@@ -125,3 +125,4 @@ lookback_days: 5
 ytdlp_search:
   enabled: true
   use_this_month_filter: true
+  cookies_from_browser: ""  # chrome, firefox, or safari — leave blank to disable
