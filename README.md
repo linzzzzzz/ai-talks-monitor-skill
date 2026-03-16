@@ -26,16 +26,16 @@ YouTube search (API key or yt-dlp fallback)
 Heuristic pre-filter  ← rejects "reaction", "summary", "breakdown", CJK equivalents, etc.
     │
     ▼
-candidates.json  ← Claude reads, classifies, and translates
+output/candidates.json  ← Claude reads, classifies, and translates
     │
     ▼
-accepted.json  ← Claude writes: accepted IDs + cleaned source descriptions + Chinese titles/descriptions + definitive rejects
+output/accepted.json  ← Claude writes: accepted IDs + cleaned source descriptions + Chinese titles/descriptions + definitive rejects
     │
     ▼
---commit-file accepted.json
+--commit-file output/accepted.json
     │
     ▼
-ai_talks.xml (English) + ai_talks_zh.xml (Chinese)  +  optional Telegram notification
+output/ai_talks.xml (English) + output/ai_talks_zh.xml (Chinese)  +  optional notification (Telegram or OpenClaw)
 ```
 
 The workflow is split into phases so the fetch step can run unattended on a schedule, and Claude only enters the loop for classification and translation.
@@ -65,9 +65,11 @@ pip install requests pyyaml
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `YOUTUBE_API_KEY` | Recommended | YouTube Data API v3. Free — get one from [Google Cloud Console](https://console.cloud.google.com). If absent, falls back to yt-dlp. |
-| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token. Get one from [@BotFather](https://t.me/botfather). Notifications are sent when both token and chat ID are set. |
-| `TELEGRAM_CHAT_ID` | No | Telegram chat or channel ID to send notifications to. |
+| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token. Only needed when `notifications.backend: "telegram"`. |
+| `TELEGRAM_CHAT_ID` | No | Telegram chat or channel ID. Only needed when `notifications.backend: "telegram"`. |
 | `AI_TALKS_FEEDS_REPO` | No | Absolute path to a local git repo (e.g. `~/feeds`). If set, both `ai_talks.xml` and `ai_talks_zh.xml` are copied there and pushed automatically after each commit — keeping a GitHub Pages feed up to date. |
+
+If you already run OpenClaw and want to reuse its Telegram or Feishu channels, set `notifications.backend: "openclaw"` in `config.yaml` and configure `notifications.openclaw.channel/target` instead of using the raw Telegram env vars.
 
 **yt-dlp fallback:** If `YOUTUBE_API_KEY` is not set, the script uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to search YouTube without an API key. Install it with `pip install yt-dlp`. To enable full video descriptions (requires authentication), set `ytdlp_search.cookies_from_browser: chrome` (or `firefox`/`safari`) in `config.yaml`.
 
@@ -87,15 +89,15 @@ python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candida
 
 **Step 2 — classify (Claude's job):**
 
-In Claude Code, invoke the skill. Claude reads `candidates.json`, classifies each video (accept / definitive reject / uncertain), and writes `accepted.json` with a cleaned source-language description plus Chinese title/description for accepted videos.
+In Claude Code, invoke the skill. Claude reads `output/candidates.json`, classifies each video (accept / definitive reject / uncertain), and writes `output/accepted.json` with a cleaned source-language description plus Chinese title/description for accepted videos.
 
 **Step 3 — commit:**
 
 ```bash
-python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --commit-file ~/.claude/skills/ai-talks-monitor/accepted.json
+python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --commit-file ~/.claude/skills/ai-talks-monitor/output/accepted.json
 ```
 
-This writes both `ai_talks.xml` (English) and `ai_talks_zh.xml` (Chinese), updates `state.json`, and posts to Telegram if configured.
+This writes both `output/ai_talks.xml` (English) and `output/ai_talks_zh.xml` (Chinese), updates `output/state.json`, and sends a notification if configured.
 
 ## Using with Claude Code
 
@@ -132,6 +134,20 @@ min_duration_minutes: 20  # skip videos shorter than this
 lookback_days: 7          # rolling search window in days
 ```
 
+Notification delivery is configured separately:
+
+```yaml
+notifications:
+  backend: "openclaw"
+  openclaw:
+    binary: "openclaw"
+    channel: "telegram"  # or "feishu"
+    target: "123456789"  # Telegram chat ID, @username, or Feishu target like feishu:group:oc_xxx
+    account: ""          # optional OpenClaw account id
+```
+
+Use `backend: "telegram"` to keep the current direct Telegram Bot API path, or `backend: "none"` to disable notifications.
+
 **Person watchlist:** Each person gets an exact YouTube search. Claude verifies the person is an actual participant, not just the subject of a reaction or news video.
 
 **Topic searches:** Broader and noisier. Useful for catching talks from people you don't know yet, or conference keynotes. A higher `min_duration_minutes` helps cut noise.
@@ -148,15 +164,15 @@ Each commit produces two standard RSS 2.0 files with a rolling 30-day window:
 
 | Feed | File | Contents |
 |------|------|----------|
-| English | `ai_talks.xml` | Original titles and descriptions |
-| Chinese | `ai_talks_zh.xml` | Claude-translated titles and cleaned descriptions |
+| English | `output/ai_talks.xml` | Original titles and descriptions |
+| Chinese | `output/ai_talks_zh.xml` | Claude-translated titles and cleaned descriptions |
 
 ### Serving via GitHub Pages
 
 ```bash
 mkdir ~/feeds && cd ~/feeds
 git init && git remote add origin https://github.com/YOURNAME/feeds
-cp /path/to/ai_talks.xml /path/to/ai_talks_zh.xml .
+cp /path/to/output/ai_talks.xml /path/to/output/ai_talks_zh.xml .
 git add ai_talks.xml ai_talks_zh.xml && git commit -m "feed"
 git push -u origin main
 # Enable Pages in repo Settings → Pages → Deploy from main branch
@@ -180,12 +196,12 @@ rss:
   feeds:
     - id: "ai-talks"
       name: "AI Thought Leader Talks"
-      url: "file:///Users/YOU/.claude/skills/ai-talks-monitor/ai_talks.xml"
+      url: "file:///Users/YOU/.claude/skills/ai-talks-monitor/output/ai_talks.xml"
       max_age_days: 30
       enabled: true
     - id: "ai-talks-zh"
       name: "AI大咖讲座精选"
-      url: "file:///Users/YOU/.claude/skills/ai-talks-monitor/ai_talks_zh.xml"
+      url: "file:///Users/YOU/.claude/skills/ai-talks-monitor/output/ai_talks_zh.xml"
       max_age_days: 30
       enabled: true
 ```
@@ -212,7 +228,7 @@ You can enable one or both feeds depending on your audience. The Chinese feed (`
 
 ## Automated daily fetch
 
-The `--fetch-candidates` step is safe to schedule unattended — it only writes `candidates.json` and never modifies state or the RSS feed.
+The `--fetch-candidates` step is safe to schedule unattended — it only writes `output/candidates.json` and never modifies state or the RSS feed.
 
 **macOS (launchd):**
 
@@ -257,19 +273,19 @@ launchctl load ~/Library/LaunchAgents/com.openclaw.ai-talks-monitor.plist
 | `scripts/check_talks.py` | Main script |
 | `config.yaml` | Watchlist and settings |
 | `SKILL.md` | Claude Code skill instructions |
-| `candidates.json` | Auto-written by `--fetch-candidates`; read by Claude for classification |
-| `accepted.json` | Written by Claude; input to `--commit-file` |
-| `state.json` | Auto-managed: seen video IDs (with 30-day expiry), last_checked timestamp, rolling RSS items |
-| `ai_talks.xml` | Auto-generated English RSS 2.0 feed |
-| `ai_talks_zh.xml` | Auto-generated Chinese RSS 2.0 feed |
+| `output/candidates.json` | Auto-written by `--fetch-candidates`; read by Claude for classification |
+| `output/accepted.json` | Written by Claude; input to `--commit-file` |
+| `output/state.json` | Auto-managed: seen video IDs (with 30-day expiry), last_checked timestamp, rolling RSS items |
+| `output/ai_talks.xml` | Auto-generated English RSS 2.0 feed |
+| `output/ai_talks_zh.xml` | Auto-generated Chinese RSS 2.0 feed |
 
-Delete `state.json` to trigger a full re-scan on the next run.
+Delete `output/state.json` to trigger a full re-scan on the next run.
 
 ## CLI reference
 
 ```
---fetch-candidates           Search YouTube, apply heuristic filter, write candidates.json
---commit-file FILE           Read accepted.json (written by Claude); write both RSS feeds, update state
+--fetch-candidates           Search YouTube, apply heuristic filter, write output/candidates.json
+--commit-file FILE           Read output/accepted.json (written by Claude); write both RSS feeds, update state
 --commit ID [ID ...]         Legacy: accept these video IDs, write English feed only, update state
 
 --dry-run                    Preview without writing files or updating state

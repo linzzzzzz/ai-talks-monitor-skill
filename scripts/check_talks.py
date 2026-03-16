@@ -12,7 +12,7 @@ AI Talks Monitor — two-phase workflow:
 Outputs:
   - candidates.json  — written by --fetch-candidates for Claude to review
   - ai_talks.xml     — RSS 2.0 feed, written by --commit
-  - Slack/Discord    — posted on --commit when SLACK_WEBHOOK_URL env var is set
+  - notifications    — optional Telegram/OpenClaw delivery on --commit
 """
 
 from __future__ import annotations
@@ -35,11 +35,12 @@ import yaml
 
 SKILL_DIR = Path(__file__).parent.parent
 CONFIG_FILE = SKILL_DIR / "config.yaml"
-STATE_FILE = SKILL_DIR / "state.json"
-RSS_FILE = SKILL_DIR / "ai_talks.xml"
-RSS_FILE_ZH = SKILL_DIR / "ai_talks_zh.xml"
-CANDIDATES_FILE = SKILL_DIR / "candidates.json"
-ACCEPTED_FILE = SKILL_DIR / "accepted.json"
+OUTPUT_DIR = SKILL_DIR / "output"
+STATE_FILE = OUTPUT_DIR / "state.json"
+RSS_FILE = OUTPUT_DIR / "ai_talks.xml"
+RSS_FILE_ZH = OUTPUT_DIR / "ai_talks_zh.xml"
+CANDIDATES_FILE = OUTPUT_DIR / "candidates.json"
+ACCEPTED_FILE = OUTPUT_DIR / "accepted.json"
 
 RSS_RETENTION_DAYS = 30
 YOUTUBE_SEARCH_SP_THIS_MONTH = "EgIIBA%253D%253D"
@@ -55,6 +56,9 @@ DERIVATIVE_KEYWORDS = [
 def load_config() -> dict:
     with open(CONFIG_FILE) as f:
         return yaml.safe_load(f)
+
+
+OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 def load_state() -> dict:
@@ -446,21 +450,114 @@ def collect_candidates(
     return candidates
 
 
-def send_telegram(bot_token: str, chat_id: str, talks: list[dict], dry_run: bool = False) -> None:
-    for video in talks:
-        text = (
-            f"*New talk: {video['label']}*\n"
-            f"*{video['title']}*\n"
-            f"Channel: {video['channel']} · {video['duration_min']} min\n"
+def display_source(video: dict) -> str:
+    channel = video.get("channel")
+    if channel:
+        return channel
+    label = video.get("label", "")
+    if isinstance(label, str) and label.startswith("Channel: "):
+        return label.removeprefix("Channel: ")
+    return ""
+
+
+def build_notification_chunks(talks: list[dict], dry_run: bool = False, max_chars: int = 3500) -> list[str]:
+    max_chars = 3500
+    header = f"AI Talks Monitor: {len(talks)} new talk(s)"
+    if dry_run:
+        header = f"[DRY RUN]\n{header}"
+
+    chunks = []
+    current = header
+
+    for index, video in enumerate(talks, start=1):
+        source = display_source(video)
+        meta = f"{source} · {video['duration_min']} min" if source else f"{video['duration_min']} min"
+        item_block = (
+            f"\n\n{index}. [{video['label']}] {video['title']}\n"
+            f"{meta}\n"
             f"{video['url']}"
         )
-        if dry_run:
-            text = f"_\\[DRY RUN\\]_\n{text}"
+        if len(current) + len(item_block) > max_chars:
+            chunks.append(current)
+            current = f"{header} (cont.){item_block}"
+        else:
+            current += item_block
+
+    chunks.append(current)
+    return chunks
+
+
+def send_telegram(bot_token: str, chat_id: str, talks: list[dict], dry_run: bool = False) -> None:
+    for text in build_notification_chunks(talks, dry_run=dry_run):
         requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            json={"chat_id": chat_id, "text": text},
             timeout=10,
         ).raise_for_status()
+
+
+def send_openclaw(
+    binary: str,
+    channel: str,
+    target: str,
+    talks: list[dict],
+    account: str = "",
+    dry_run: bool = False,
+) -> None:
+    if not shutil.which(binary):
+        raise RuntimeError(f"OpenClaw binary not found on PATH: {binary}")
+
+    for text in build_notification_chunks(talks, dry_run=dry_run):
+        cmd = [
+            binary, "message", "send",
+            "--channel", channel,
+            "--target", target,
+            "--message", text,
+        ]
+        if account:
+            cmd += ["--account", account]
+        subprocess.run(cmd, check=True)
+
+
+def notify_talks(config: dict, talks: list[dict], dry_run: bool = False) -> None:
+    if not talks:
+        return
+
+    notifications = config.get("notifications", {})
+    backend = notifications.get("backend", "telegram")
+
+    if backend == "none":
+        print("(Notifications disabled)")
+        return
+
+    if backend == "telegram":
+        tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        if tg_token and tg_chat_id:
+            send_telegram(tg_token, tg_chat_id, talks, dry_run=dry_run)
+        else:
+            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set)")
+        return
+
+    if backend == "openclaw":
+        openclaw_config = notifications.get("openclaw", {})
+        channel = (openclaw_config.get("channel") or "").strip()
+        target = (openclaw_config.get("target") or "").strip()
+        binary = (openclaw_config.get("binary") or "openclaw").strip() or "openclaw"
+        account = (openclaw_config.get("account") or "").strip()
+        if not channel or not target:
+            print("(OpenClaw notifications configured, but notifications.openclaw.channel/target is missing)")
+            return
+        send_openclaw(binary, channel, target, talks, account=account, dry_run=dry_run)
+        return
+
+    print(f"(Unknown notifications.backend: {backend})")
+
+
+def print_accepted_items(talks: list[dict], prefer_zh: bool = False) -> None:
+    for video in talks:
+        title = video.get("title_zh") if prefer_zh else None
+        print(f"  {video['label']}: {title or video['title']}\n  {video['url']}\n")
 
 
 def youtube_ts_to_rfc2822(iso_ts: str) -> str:
@@ -481,14 +578,16 @@ def build_rss(items: list[dict]) -> str:
 
     for item_data in items:
         item = ET.SubElement(channel, "item")
+        source = display_source(item_data)
         ET.SubElement(item, "title").text = f"[{item_data['label']}] {item_data['title']}"
         ET.SubElement(item, "link").text = item_data["url"]
         ET.SubElement(item, "guid", isPermaLink="false").text = item_data["id"]
         ET.SubElement(item, "pubDate").text = youtube_ts_to_rfc2822(item_data["published_at"])
-        ET.SubElement(item, "author").text = item_data["channel"]
+        ET.SubElement(item, "author").text = source
         description = item_data.get("description_clean") or item_data.get("description", "")
+        meta = f"{source} · {item_data['duration_min']} min" if source else f"{item_data['duration_min']} min"
         ET.SubElement(item, "description").text = (
-            f"{item_data['channel']} · {item_data['duration_min']} min\n\n"
+            f"{meta}\n\n"
             f"{description}"
         )
 
@@ -508,19 +607,21 @@ def build_rss_zh(items: list[dict]) -> str:
 
     for item_data in items:
         item = ET.SubElement(channel, "item")
+        source = display_source(item_data)
         title = item_data.get("title_zh") or item_data["title"]
         ET.SubElement(item, "title").text = f"[{item_data['label']}] {title}"
         ET.SubElement(item, "link").text = item_data["url"]
         ET.SubElement(item, "guid", isPermaLink="false").text = item_data["id"]
         ET.SubElement(item, "pubDate").text = youtube_ts_to_rfc2822(item_data["published_at"])
-        ET.SubElement(item, "author").text = item_data["channel"]
+        ET.SubElement(item, "author").text = source
         summary = (
             item_data.get("description_zh")
             or item_data.get("description_clean")
             or item_data.get("description", "")
         )
+        meta = f"{source} · {item_data['duration_min']} 分钟" if source else f"{item_data['duration_min']} 分钟"
         ET.SubElement(item, "description").text = (
-            f"{item_data['channel']} · {item_data['duration_min']} 分钟\n\n{summary}"
+            f"{meta}\n\n{summary}"
         )
 
     ET.indent(rss, space="  ")
@@ -664,6 +765,7 @@ def push_to_feeds_repo(rss_files: list[Path], feeds_repo: Path, dry_run: bool = 
 
 def cmd_commit(args) -> None:
     """Accept specific video IDs, write RSS feed, update state."""
+    config = load_config()
     if not CANDIDATES_FILE.exists():
         print("No candidates.json found. Run --fetch-candidates first.")
         return
@@ -687,9 +789,6 @@ def cmd_commit(args) -> None:
         return
 
     state = load_state()
-    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-
     cutoff = datetime.now(timezone.utc) - timedelta(days=RSS_RETENTION_DAYS)
     existing_items = [
         i for i in state.get("items", [])
@@ -702,10 +801,7 @@ def cmd_commit(args) -> None:
     if args.dry_run:
         print("\n--- RSS preview (first 1000 chars) ---")
         print(rss_content[:1000] + ("..." if len(rss_content) > 1000 else ""))
-        if tg_token and tg_chat_id:
-            send_telegram(tg_token, tg_chat_id, accepted, dry_run=True)
-        else:
-            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set)")
+        notify_talks(config, accepted, dry_run=True)
         print(f"\n[DRY RUN] Would write {len(accepted)} new item(s) to {RSS_FILE}")
         feeds_repo = os.environ.get("AI_TALKS_FEEDS_REPO", "")
         if feeds_repo:
@@ -715,12 +811,19 @@ def cmd_commit(args) -> None:
     RSS_FILE.write_text(rss_content, encoding="utf-8")
     print(f"Wrote {len(all_items)} item(s) to {RSS_FILE}")
 
-    if tg_token and tg_chat_id:
-        send_telegram(tg_token, tg_chat_id, accepted)
+    backend = config.get("notifications", {}).get("backend", "telegram")
+    if backend == "none":
+        print("(Notifications disabled — printing only)")
+        print_accepted_items(accepted)
     else:
-        print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
-        for v in accepted:
-            print(f"  {v['label']}: {v['title']}\n  {v['url']}\n")
+        notify_talks(config, accepted)
+        if backend == "telegram" and not (
+            os.environ.get("TELEGRAM_BOT_TOKEN", "") and os.environ.get("TELEGRAM_CHAT_ID", "")
+        ):
+            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
+            print_accepted_items(accepted)
+        elif backend not in {"telegram", "openclaw"}:
+            print_accepted_items(accepted)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     seen_dict = load_seen_ids(state)
@@ -739,6 +842,7 @@ def cmd_commit(args) -> None:
 
 def cmd_commit_file(args) -> None:
     """Read accepted.json (with description_clean/title_zh/description_zh), write both English and Chinese RSS feeds."""
+    config = load_config()
     accepted_file = Path(args.commit_file)
     if not accepted_file.exists():
         print(f"File not found: {accepted_file}")
@@ -803,9 +907,6 @@ def cmd_commit_file(args) -> None:
         return
 
     state = load_state()
-    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-
     cutoff = datetime.now(timezone.utc) - timedelta(days=RSS_RETENTION_DAYS)
     existing_items = [
         i for i in state.get("items", [])
@@ -821,10 +922,7 @@ def cmd_commit_file(args) -> None:
         print(rss_content[:500] + "...")
         print("\n--- RSS (Chinese) preview ---")
         print(rss_zh_content[:500] + "...")
-        if tg_token and tg_chat_id:
-            send_telegram(tg_token, tg_chat_id, accepted, dry_run=True)
-        else:
-            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set)")
+        notify_talks(config, accepted, dry_run=True)
         print(f"\n[DRY RUN] Would write {len(accepted)} new item(s) to {RSS_FILE} and {RSS_FILE_ZH}")
         feeds_repo = os.environ.get("AI_TALKS_FEEDS_REPO", "")
         if feeds_repo:
@@ -835,12 +933,19 @@ def cmd_commit_file(args) -> None:
     RSS_FILE_ZH.write_text(rss_zh_content, encoding="utf-8")
     print(f"Wrote {len(all_items)} item(s) to {RSS_FILE} and {RSS_FILE_ZH}")
 
-    if tg_token and tg_chat_id:
-        send_telegram(tg_token, tg_chat_id, accepted)
+    backend = config.get("notifications", {}).get("backend", "telegram")
+    if backend == "none":
+        print("(Notifications disabled — printing only)")
+        print_accepted_items(accepted, prefer_zh=True)
     else:
-        print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
-        for v in accepted:
-            print(f"  {v['label']}: {v.get('title_zh') or v['title']}\n  {v['url']}\n")
+        notify_talks(config, accepted)
+        if backend == "telegram" and not (
+            os.environ.get("TELEGRAM_BOT_TOKEN", "") and os.environ.get("TELEGRAM_CHAT_ID", "")
+        ):
+            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
+            print_accepted_items(accepted, prefer_zh=True)
+        elif backend not in {"telegram", "openclaw"}:
+            print_accepted_items(accepted, prefer_zh=True)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     seen_dict = load_seen_ids(state)

@@ -1,6 +1,6 @@
 ---
 name: ai-talks-monitor
-description: Monitors YouTube for new long-form original talks and interviews with AI thought leaders. Use this skill whenever the user asks about new AI talks or interviews, says things like "any new Sam Altman talks?", "check YouTube for new AI interviews", "run the talks monitor", "who's on the watchlist?", "add [name] to the watchlist", or wants to manage, schedule, or configure the AI talks monitor. Also use when the user wants to set up automated YouTube monitoring, integrate AI talk discovery with Telegram or an RSS reader, or enable topic-based searches for conference keynotes or unknown speakers. Filters out derivative content (reactions, summaries, explainers) using LLM classification. Writes an RSS 2.0 feed (ai_talks.xml) and optionally posts to Telegram.
+description: Monitors YouTube for new long-form original talks and interviews with AI thought leaders. Use this skill whenever the user asks about new AI talks or interviews, says things like "any new Sam Altman talks?", "check YouTube for new AI interviews", "run the talks monitor", "who's on the watchlist?", "add [name] to the watchlist", or wants to manage, schedule, or configure the AI talks monitor. Also use when the user wants to set up automated YouTube monitoring, integrate AI talk discovery with Telegram, Feishu, OpenClaw, or an RSS reader, or enable topic-based searches for conference keynotes or unknown speakers. Filters out derivative content (reactions, summaries, explainers) using LLM classification. Writes RSS 2.0 feeds and optionally sends a chat notification.
 metadata:
   {
     "openclaw":
@@ -29,8 +29,8 @@ Supports three modes:
 
 1. Set environment variables:
    - `YOUTUBE_API_KEY` — YouTube Data API v3 key (free; get from Google Cloud Console)
-   - `TELEGRAM_BOT_TOKEN` — Telegram bot token (optional; get from @BotFather)
-   - `TELEGRAM_CHAT_ID` — Telegram chat/channel ID to send notifications to (optional)
+   - `TELEGRAM_BOT_TOKEN` — Telegram bot token (optional; only for `notifications.backend: "telegram"`)
+   - `TELEGRAM_CHAT_ID` — Telegram chat/channel ID to send notifications to (optional; only for `notifications.backend: "telegram"`)
    - `AI_TALKS_FEEDS_REPO` — absolute path to a local git repo (optional; if set, `--commit` copies `ai_talks.xml` there and pushes automatically)
 
 2. Install Python dependencies:
@@ -59,9 +59,9 @@ python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates --limit 2
 
 **Phase 2 — classify and translate (your job):**
 
-First, read `SKILL_DIR/state.json` (if it exists) to load the `items` list — the recently committed talks. You'll need this for cross-run deduplication below.
+First, read `SKILL_DIR/output/state.json` (if it exists) to load the `items` list — the recently committed talks. You'll need this for cross-run deduplication below.
 
-Then read `SKILL_DIR/candidates.json`. For each video, decide based on its label:
+Then read `SKILL_DIR/output/candidates.json`. For each video, decide based on its label:
 - **Person watchlist entries** (`label` = a person's name): Is the named person a direct guest/participant in this video, or just being discussed (reaction, summary, news report about them)?
 - **Channel entries** (`label` = "Channel: X"): Is this a genuine AI-related talk or interview? These come from curated high-signal channels, so the bar is: does it feature an AI researcher, founder, or thought leader speaking in their own words?
 - **Topic search entries** (`label` = "Topic: X"): Two checks must both pass:
@@ -73,7 +73,7 @@ Then read `SKILL_DIR/candidates.json`. For each video, decide based on its label
 Multiple candidates may be different channels reuploading the same underlying event (same person, same venue/date, nearly identical descriptions). Accept only one. Prefer: original/official channel > named news outlet > generic news reupload. Reject the rest.
 
 **Same-event deduplication — against state.json:**
-If a candidate appears to be the same event as a talk already in `state.json items` (same person, same event, similar timeframe), reject it even though the video ID is new.
+If a candidate appears to be the same event as a talk already in `output/state.json items` (same person, same event, similar timeframe), reject it even though the video ID is new.
 
 For each candidate, assign it to one of three buckets:
 - **Accept**: genuine first-person talk, enough information to be confident.
@@ -96,9 +96,9 @@ For `description_zh`:
 - Translate `description_clean` faithfully into natural Chinese
 - Do not add any information not present in the metadata
 
-**Important:** `accepted.json` must be valid JSON. Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking the JSON string delimiters.
+**Important:** `output/accepted.json` must be valid JSON. Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking the JSON string delimiters.
 
-Write `SKILL_DIR/accepted.json` with this structure:
+Write `SKILL_DIR/output/accepted.json` with this structure:
 ```json
 {
   "accepted": [
@@ -117,15 +117,15 @@ IDs in neither `accepted` nor `rejected` are left unmarked in state and will rea
 
 **Phase 3 — commit accepted videos:**
 ```bash
-python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/accepted.json
+python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/accepted.json
 ```
-This writes both `ai_talks.xml` (English) and `ai_talks_zh.xml` (Chinese titles and translated descriptions), updates `state.json`, posts to Telegram if configured, and pushes to the feeds repo if `AI_TALKS_FEEDS_REPO` is set.
+This writes both `ai_talks.xml` (English) and `ai_talks_zh.xml` (Chinese titles and translated descriptions), updates `state.json`, sends a notification if configured, and pushes to the feeds repo if `AI_TALKS_FEEDS_REPO` is set.
 
 Note: `--commit-file` will refuse to publish any item missing a `published_at` date (can happen with yt-dlp fallback). If this occurs, re-run `--fetch-candidates` with `YOUTUBE_API_KEY` set, or set `ytdlp_search.cookies_from_browser` in `config.yaml`, then retry.
 
 Use `--dry-run` to preview without writing files or updating state:
 ```bash
-python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/accepted.json --dry-run
+python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/accepted.json --dry-run
 ```
 
 After committing, report what was accepted to the user.
@@ -174,6 +174,8 @@ Read and display `thought_leaders`, `channels.list` (if enabled), and `topics.se
 - `ytdlp_search.enabled` — set to `true` to enable yt-dlp as a fallback when `YOUTUBE_API_KEY` is not set (default: `false`). yt-dlp has known limitations: approximate date filtering, descriptions require per-video fetches that often hit bot-checks. Prefer setting `YOUTUBE_API_KEY`.
 - `ytdlp_search.use_this_month_filter` — when using yt-dlp fallback, optionally apply a YouTube-side "This month" prefilter before local date filtering (default: `true`). Reduces stale results but may also reduce recall; local date filtering remains the authoritative cutoff either way.
 - `ytdlp_search.cookies_from_browser` — browser to pull cookies from when using yt-dlp (`chrome`, `firefox`, or `safari`; default: `""`). Set this if yt-dlp hits YouTube bot-checks or if you want full video descriptions (descriptions require per-video fetches that fail without auth).
+- `notifications.backend` — `telegram`, `openclaw`, or `none`
+- `notifications.openclaw.channel` / `notifications.openclaw.target` / `notifications.openclaw.account` — used when routing notifications through OpenClaw, including Feishu support
 
 ## Automated Daily Check
 
@@ -214,9 +216,9 @@ The fetch step can be scheduled unattended — `--fetch-candidates` only writes 
 ## How it works
 
 1. **YouTube search** (`--fetch-candidates`): Runs three source types — person watchlist (keyword search via API/yt-dlp), channel watchlist (channel feed via API with `channelId` or yt-dlp with `@handle`), topic searches (keyword search). All use a rolling `lookback_days` window.
-2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Writes survivors to `candidates.json`
-3. **Classification (you)**: Read `state.json` + `candidates.json`; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items
-4. **Commit** (`--commit ID ...`): Builds `ai_talks.xml` with a rolling 30-day RSS window, updates `state.json`, posts to Telegram if configured
+2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Writes survivors to `output/candidates.json`
+3. **Classification (you)**: Read `output/state.json` + `output/candidates.json`; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items
+4. **Commit** (`--commit ID ...`): Builds feeds with a rolling 30-day RSS window, updates `state.json`, sends a notification if configured
 
 ## TrendRadar integration
 
@@ -239,10 +241,10 @@ rss:
 ## Files
 
 - `SKILL.md` — this file
-- `scripts/check_talks.py` — main script: `--fetch-candidates` fetches to candidates.json; `--commit` writes RSS + state
-- `candidates.json` — auto-written by --fetch-candidates; read by you for classification
-- `accepted.json` — written by you during Phase 2 (IDs + description_clean + title_zh + description_zh); input to --commit-file
+- `scripts/check_talks.py` — main script: `--fetch-candidates` fetches to output/candidates.json; `--commit` writes RSS + state
+- `output/candidates.json` — auto-written by --fetch-candidates; read by you for classification
+- `output/accepted.json` — written by you during Phase 2 (IDs + description_clean + title_zh + description_zh); input to --commit-file
 - `config.yaml` — watchlist and settings (edit this to customize)
-- `state.json` — auto-managed: seen video IDs, last_checked timestamp, rolling item list
-- `ai_talks.xml` — auto-generated RSS 2.0 feed (English)
-- `ai_talks_zh.xml` — auto-generated RSS 2.0 feed (Chinese titles and translated descriptions)
+- `output/state.json` — auto-managed: seen video IDs, last_checked timestamp, rolling item list
+- `output/ai_talks.xml` — auto-generated RSS 2.0 feed (English)
+- `output/ai_talks_zh.xml` — auto-generated RSS 2.0 feed (Chinese titles and translated descriptions)

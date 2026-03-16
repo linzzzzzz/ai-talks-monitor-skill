@@ -126,3 +126,16 @@ ytdlp_search:
   enabled: true
   use_this_month_filter: true
   cookies_from_browser: ""  # chrome, firefox, or safari — leave blank to disable
+
+# Notification delivery after --commit / --commit-file.
+# backend:
+#   - "telegram"  → direct Telegram Bot API via TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+#   - "openclaw"  → hand off delivery to `openclaw message send`
+#   - "none"      → disable notifications
+notifications:
+  backend: "openclaw"
+  openclaw:
+    binary: "openclaw"
+    channel: "feishu"   # "telegram" or "feishu"
+    target: "feishu:group:oc_fd1396229af9bb9627e53262c5ed1532"            # e.g. "123456789", "@channelname", "feishu:group:oc_xxx", "feishu:dm:ou_xxx"
+    account: ""           # optional OpenClaw account id
