@@ -70,14 +70,14 @@ pip install requests pyyaml
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `YOUTUBE_API_KEY` | Recommended | YouTube Data API v3. Free — get one from [Google Cloud Console](https://console.cloud.google.com). If absent, falls back to yt-dlp. |
+| `YOUTUBE_API_KEY` | Recommended | YouTube Data API v3. Free — get one from [Google Cloud Console](https://console.cloud.google.com). Used for API search and/or low-cost `videos.list` metadata enrichment. |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram bot token. Only needed when `notifications.backend: "native"`. |
 | `TELEGRAM_CHAT_ID` | No | Telegram chat or channel ID. Optional when `notifications.backend: "native"` if you instead set `notifications.native.target` in config. |
 | `AI_TALKS_FEEDS_REPO` | No | Absolute path to a local git repo (e.g. `~/feeds`). If set, both `ai_talks.xml` and `ai_talks_zh.xml` are copied there and pushed automatically after each commit — keeping a GitHub Pages feed up to date. |
 
 If you already run OpenClaw and want to reuse its Telegram or Feishu channels, set `notifications.backend: "openclaw"` in `config.yaml` and configure `notifications.openclaw.channel/target` instead of using the raw Telegram env vars.
 
-**yt-dlp fallback:** If `YOUTUBE_API_KEY` is not set, the script uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to search YouTube without an API key. Install it with `pip install yt-dlp`. To enable full video descriptions (requires authentication), set `ytdlp_search.cookies_from_browser: chrome` (or `firefox`/`safari`) in `config.yaml`.
+**yt-dlp fallback / hybrid mode:** The script can use [yt-dlp](https://github.com/yt-dlp/yt-dlp) for search discovery and either yt-dlp or the YouTube Data API for metadata enrichment. Install it with `pip install yt-dlp`. To avoid yt-dlp bot-checks on per-video metadata fetches, set `backends.search: yt_dlp` and `backends.metadata: youtube_api` in `config.yaml` when `YOUTUBE_API_KEY` is available.
 
 ## Quick start
 
@@ -130,6 +130,10 @@ The agent handles the full workflow: fetching, classifying, enriching accepted i
 Edit `config.yaml` to customize the watchlist and settings:
 
 ```yaml
+backends:
+  search: yt_dlp        # use yt-dlp for candidate discovery
+  metadata: youtube_api # use videos.list for exact descriptions/dates when API key exists
+
 thought_leaders:
   - name: "Sam Altman"
     search_query: '"Sam Altman" interview'
@@ -146,6 +150,8 @@ topics:
 
 min_duration_minutes: 20  # skip videos shorter than this
 lookback_days: 7          # rolling search window in days
+ytdlp_search:
+  use_this_month_filter: true
 ```
 
 Notification delivery is configured separately:

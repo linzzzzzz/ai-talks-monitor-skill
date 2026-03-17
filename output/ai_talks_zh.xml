@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>AI大咖讲座精选 (YouTube)</title>
+    <link>https://www.youtube.com</link>
+    <description>精选AI思想领袖的长篇访谈与演讲，由Claude筛选整理。</description>
+    <lastBuildDate>Mon, 16 Mar 2026 14:15:27 +0000</lastBuildDate>
+    <item>
+      <title>[Sam Altman] 山姆·奥特曼在贝莱德基础设施峰会上的现场演讲</title>
+      <link>https://www.youtube.com/watch?v=8EdjHwEO8QA</link>
+      <guid isPermaLink="false">8EdjHwEO8QA</guid>
+      <pubDate>Thu, 12 Mar 2026 06:51:31 +0000</pubDate>
+      <author>DRM News</author>
+      <description>DRM News · 39 分钟
+
+OpenAI CEO 山姆·奥特曼在华盛顿特区贝莱德美国基础设施峰会上发表现场讲话。来自政府、科技和金融界的领袖齐聚一堂，共同探讨投资、基础设施建设以及新兴技术在经济增长中的作用。本次录像记录了奥特曼关于AI快速普及、OpenAI基础设施扩张以及他将智能打造为普惠资源这一愿景的现场发言。</description>
+    </item>
+    <item>
+      <title>[Yann LeCun] 杨·勒丘：「大语言模型是死路一条」—— 独家专访</title>
+      <link>https://www.youtube.com/watch?v=XnnnAx5lrx8</link>
+      <guid isPermaLink="false">XnnnAx5lrx8</guid>
+      <pubDate>Wed, 11 Mar 2026 15:49:47 +0000</pubDate>
+      <author>This Is The World</author>
+      <description>This Is The World · 51 分钟
+
+对 Meta 首席AI科学家、图灵奖得主 Yann LeCun 的独家专访。录制于他宣布成立 AMI Labs（先进机器智能实验室）之后——这是一家专注于世界模型研究、融资10亿美元的新公司。LeCun 在访谈中阐述了为何他认为大语言模型无法实现真正的智能，并分享了他眼中AI研究更有前景的发展方向。</description>
+    </item>
+    <item>
+      <title>[Geoffrey Hinton] 杰弗里·辛顿：亲手造就AI的人说我们应该警惕</title>
+      <link>https://www.youtube.com/watch?v=mniyJXyK28c</link>
+      <guid isPermaLink="false">mniyJXyK28c</guid>
+      <pubDate>Sat, 14 Mar 2026 16:01:07 +0000</pubDate>
+      <author>The Lumen Project</author>
+      <description>The Lumen Project · 27 分钟
+
+被誉为「AI教父」的杰弗里·辛顿谈论了他花费逾50年时间参与构建的人工智能技术所带来的风险。本视频源自《The Diary of a CEO》节目，辛顿在其中探讨自主武器、AI驱动的网络攻击，并阐述了为何他认为人类应认真对待AI的生存威胁——这项改变了世界的技术，也可能成为人类面临的最大危险之一。</description>
+    </item>
+    <item>
+      <title>[Andrew Ng] 吴恩达：探索计算机科学与K12教育中的AI</title>
+      <link>https://www.youtube.com/watch?v=EQiFIJP4wMM</link>
+      <guid isPermaLink="false">EQiFIJP4wMM</guid>
+      <pubDate>Wed, 11 Mar 2026 02:05:45 +0000</pubDate>
+      <author>EducAIted</author>
+      <description>EducAIted · 28 分钟
+
+DeepLearning.AI 创始人、AI教育先驱吴恩达博士受邀参加「EducAIted Voices」访谈系列的首播节目。该系列由 Emma Ludwick 和 Bailey Ubellacker 博士主持，专为帮助K-12教育工作者应对AI浪潮而设。对话涵盖计算机科学教育、培养学生AI素养，以及教育者如何在课堂内外适应快速变化的AI工具。</description>
+    </item>
+    <item>
+      <title>[Jensen Huang] 黄仁勋驾车游旧金山：谈自动驾驶的安全与未来</title>
+      <link>https://www.youtube.com/watch?v=ZMpDiGoU4Wg</link>
+      <guid isPermaLink="false">ZMpDiGoU4Wg</guid>
+      <pubDate>Wed, 11 Mar 2026 13:01:33 +0000</pubDate>
+      <author>NVIDIA</author>
+      <description>NVIDIA · 23 分钟
+
+英伟达创始人兼CEO黄仁勋与英伟达汽车业务副总裁吴欣洲一同驾车穿越旧金山，探讨如何实现舒适、自信且安全的自动驾驶体验。对话围绕英伟达DRIVE AV平台展开，深入讨论实现可扩展L4自动驾驶的技术要求，以及Robotaxi商业化落地的路径。</description>
+    </item>
+    <item>
+      <title>[Jensen Huang] 黄仁勋：计算革命的重塑者</title>
+      <link>https://www.youtube.com/watch?v=FSXiiP7pO-U</link>
+      <guid isPermaLink="false">FSXiiP7pO-U</guid>
+      <pubDate>Sat, 14 Mar 2026 06:50:50 +0000</pubDate>
+      <author>APPLIED ENGLISH LABS</author>
+      <description>APPLIED ENGLISH LABS · 51 分钟
+
+英伟达CEO黄仁勋回顾了加速计算的演进历程，以及使英伟达成为AI革命核心的关键战略决策。他阐述了早期面向电子游戏的GPU创新如何为现代深度学习奠定并行计算基础，并展望了下一波计算变革——物理AI时代，涵盖数字孪生、世界模型、人形机器人与工厂自动化。</description>
+    </item>
+    <item>
+      <title>[Topic: Google DeepMind Talks] AlphaGo十年：AI的历史转折点 | Thore Graepel与Pushmeet Kohli</title>
+      <link>https://www.youtube.com/watch?v=qoinGjj60Fo</link>
+      <guid isPermaLink="false">qoinGjj60Fo</guid>
+      <pubDate>Tue, 10 Mar 2026 17:28:31 +0000</pubDate>
+      <author>Google DeepMind</author>
+      <description>Google DeepMind · 54 分钟
+
+2016年3月，AlphaGo在首尔击败围棋世界冠军李世石，十年后的今天，DeepMind研究员 Thore Graepel 和 Pushmeet Kohli 回顾了这一历史性时刻如何改变了人工智能的走向。对话追溯了AlphaGo基于强化学习的研发历程、震惊世界的「第37手」棋，以及这十年来对AI研究与社会的深远影响。</description>
+    </item>
+    <item>
+      <title>[Channel: Dwarkesh Patel] 迪伦·帕特尔：制约AI算力扩展的最大瓶颈</title>
+      <link>https://www.youtube.com/watch?v=mDG_Hx3BSUE</link>
+      <guid isPermaLink="false">mDG_Hx3BSUE</guid>
+      <pubDate>Fri, 13 Mar 2026 16:26:57 +0000</pubDate>
+      <author>Dwarkesh Patel</author>
+      <description>Dwarkesh Patel · 151 分钟
+
+SemiAnalysis 创始人迪伦·帕特尔与 Dwarkesh Patel 深入探讨制约AI算力扩展的三大瓶颈：逻辑芯片、存储器与电力。对话全面审视AI实验室、超大规模云服务商、半导体晶圆厂及设备制造商的经济逻辑，逐层剖析AI算力产业链，探讨各层级的瓶颈所在及突破路径。</description>
+    </item>
+    <item>
+      <title>[Channel: Machine Learning Street Talk] 罗伯特·朗格：当AI自主发现下一个Transformer</title>
+      <link>https://www.youtube.com/watch?v=EInEmGaMRLc</link>
+      <guid isPermaLink="false">EInEmGaMRLc</guid>
+      <pubDate>Fri, 13 Mar 2026 21:00:10 +0000</pubDate>
+      <author>Machine Learning Street Talk</author>
+      <description>Machine Learning Street Talk · 78 分钟
+
+Sakana AI 创始研究员罗伯特·朗格受邀 Machine Learning Street Talk，与 Tim Scarfe 探讨「Shinka Evolve」框架——一种将大语言模型与进化算法相结合、面向开放式程序搜索的方法。核心论点：AlphaEvolve 等系统能够优化固定问题的解法，但真正的科学进步需要问题与解决方案的协同进化。对话还探讨了AI自主发现Transformer这类基础架构所需的条件。</description>
+    </item>
+    <item>
+      <title>[Sam Altman] 山姆·奥特曼在贝莱德基础设施峰会上的现场演讲</title>
+      <link>https://www.youtube.com/watch?v=8EdjHwEO8QA</link>
+      <guid isPermaLink="false">8EdjHwEO8QA</guid>
+      <pubDate>Thu, 12 Mar 2026 06:51:31 +0000</pubDate>
+      <author>DRM News</author>
+      <description>DRM News · 39 分钟
+
+OpenAI CEO 山姆·奥特曼在华盛顿特区贝莱德美国基础设施峰会上发表现场讲话。来自政府、科技和金融界的领袖齐聚一堂，共同探讨投资、基础设施建设以及新兴技术在经济增长中的作用。本次录像记录了奥特曼关于AI快速普及、OpenAI基础设施扩张以及他将智能打造为普惠资源这一愿景的现场发言。</description>
+    </item>
+    <item>
+      <title>[Yann LeCun] 杨·勒丘：「大语言模型是死路一条」—— 独家专访</title>
+      <link>https://www.youtube.com/watch?v=XnnnAx5lrx8</link>
+      <guid isPermaLink="false">XnnnAx5lrx8</guid>
+      <pubDate>Wed, 11 Mar 2026 15:49:47 +0000</pubDate>
+      <author>This Is The World</author>
+      <description>This Is The World · 51 分钟
+
+对 Meta 首席AI科学家、图灵奖得主 Yann LeCun 的独家专访。录制于他宣布成立 AMI Labs（先进机器智能实验室）之后——这是一家专注于世界模型研究、融资10亿美元的新公司。LeCun 在访谈中阐述了为何他认为大语言模型无法实现真正的智能，并分享了他眼中AI研究更有前景的发展方向。</description>
+    </item>
+    <item>
+      <title>[Geoffrey Hinton] 杰弗里·辛顿：亲手造就AI的人说我们应该警惕</title>
+      <link>https://www.youtube.com/watch?v=mniyJXyK28c</link>
+      <guid isPermaLink="false">mniyJXyK28c</guid>
+      <pubDate>Sat, 14 Mar 2026 16:01:07 +0000</pubDate>
+      <author>The Lumen Project</author>
+      <description>The Lumen Project · 27 分钟
+
+被誉为「AI教父」的杰弗里·辛顿谈论了他花费逾50年时间参与构建的人工智能技术所带来的风险。本视频源自《The Diary of a CEO》节目，辛顿在其中探讨自主武器、AI驱动的网络攻击，并阐述了为何他认为人类应认真对待AI的生存威胁——这项改变了世界的技术，也可能成为人类面临的最大危险之一。</description>
+    </item>
+    <item>
+      <title>[Andrew Ng] 吴恩达：探索计算机科学与K12教育中的AI</title>
+      <link>https://www.youtube.com/watch?v=EQiFIJP4wMM</link>
+      <guid isPermaLink="false">EQiFIJP4wMM</guid>
+      <pubDate>Wed, 11 Mar 2026 02:05:45 +0000</pubDate>
+      <author>EducAIted</author>
+      <description>EducAIted · 28 分钟
+
+DeepLearning.AI 创始人、AI教育先驱吴恩达博士受邀参加「EducAIted Voices」访谈系列的首播节目。该系列由 Emma Ludwick 和 Bailey Ubellacker 博士主持，专为帮助K-12教育工作者应对AI浪潮而设。对话涵盖计算机科学教育、培养学生AI素养，以及教育者如何在课堂内外适应快速变化的AI工具。</description>
+    </item>
+    <item>
+      <title>[Jensen Huang] 黄仁勋驾车游旧金山：谈自动驾驶的安全与未来</title>
+      <link>https://www.youtube.com/watch?v=ZMpDiGoU4Wg</link>
+      <guid isPermaLink="false">ZMpDiGoU4Wg</guid>
+      <pubDate>Wed, 11 Mar 2026 13:01:33 +0000</pubDate>
+      <author>NVIDIA</author>
+      <description>NVIDIA · 23 分钟
+
+英伟达创始人兼CEO黄仁勋与英伟达汽车业务副总裁吴欣洲一同驾车穿越旧金山，探讨如何实现舒适、自信且安全的自动驾驶体验。对话围绕英伟达DRIVE AV平台展开，深入讨论实现可扩展L4自动驾驶的技术要求，以及Robotaxi商业化落地的路径。</description>
+    </item>
+    <item>
+      <title>[Jensen Huang] 黄仁勋：计算革命的重塑者</title>
+      <link>https://www.youtube.com/watch?v=FSXiiP7pO-U</link>
+      <guid isPermaLink="false">FSXiiP7pO-U</guid>
+      <pubDate>Sat, 14 Mar 2026 06:50:50 +0000</pubDate>
+      <author>APPLIED ENGLISH LABS</author>
+      <description>APPLIED ENGLISH LABS · 51 分钟
+
+英伟达CEO黄仁勋回顾了加速计算的演进历程，以及使英伟达成为AI革命核心的关键战略决策。他阐述了早期面向电子游戏的GPU创新如何为现代深度学习奠定并行计算基础，并展望了下一波计算变革——物理AI时代，涵盖数字孪生、世界模型、人形机器人与工厂自动化。</description>
+    </item>
+    <item>
+      <title>[Topic: Google DeepMind Talks] AlphaGo十年：AI的历史转折点 | Thore Graepel与Pushmeet Kohli</title>
+      <link>https://www.youtube.com/watch?v=qoinGjj60Fo</link>
+      <guid isPermaLink="false">qoinGjj60Fo</guid>
+      <pubDate>Tue, 10 Mar 2026 17:28:31 +0000</pubDate>
+      <author>Google DeepMind</author>
+      <description>Google DeepMind · 54 分钟
+
+2016年3月，AlphaGo在首尔击败围棋世界冠军李世石，十年后的今天，DeepMind研究员 Thore Graepel 和 Pushmeet Kohli 回顾了这一历史性时刻如何改变了人工智能的走向。对话追溯了AlphaGo基于强化学习的研发历程、震惊世界的「第37手」棋，以及这十年来对AI研究与社会的深远影响。</description>
+    </item>
+    <item>
+      <title>[Channel: Dwarkesh Patel] 迪伦·帕特尔：制约AI算力扩展的最大瓶颈</title>
+      <link>https://www.youtube.com/watch?v=mDG_Hx3BSUE</link>
+      <guid isPermaLink="false">mDG_Hx3BSUE</guid>
+      <pubDate>Fri, 13 Mar 2026 16:26:57 +0000</pubDate>
+      <author>Dwarkesh Patel</author>
+      <description>Dwarkesh Patel · 151 分钟
+
+SemiAnalysis 创始人迪伦·帕特尔与 Dwarkesh Patel 深入探讨制约AI算力扩展的三大瓶颈：逻辑芯片、存储器与电力。对话全面审视AI实验室、超大规模云服务商、半导体晶圆厂及设备制造商的经济逻辑，逐层剖析AI算力产业链，探讨各层级的瓶颈所在及突破路径。</description>
+    </item>
+    <item>
+      <title>[Channel: Machine Learning Street Talk] 罗伯特·朗格：当AI自主发现下一个Transformer</title>
+      <link>https://www.youtube.com/watch?v=EInEmGaMRLc</link>
+      <guid isPermaLink="false">EInEmGaMRLc</guid>
+      <pubDate>Fri, 13 Mar 2026 21:00:10 +0000</pubDate>
+      <author>Machine Learning Street Talk</author>
+      <description>Machine Learning Street Talk · 78 分钟
+
+Sakana AI 创始研究员罗伯特·朗格受邀 Machine Learning Street Talk，与 Tim Scarfe 探讨「Shinka Evolve」框架——一种将大语言模型与进化算法相结合、面向开放式程序搜索的方法。核心论点：AlphaEvolve 等系统能够优化固定问题的解法，但真正的科学进步需要问题与解决方案的协同进化。对话还探讨了AI自主发现Transformer这类基础架构所需的条件。</description>
+    </item>
+  </channel>
+</rss>

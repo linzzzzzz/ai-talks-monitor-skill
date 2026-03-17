@@ -117,13 +117,28 @@ min_duration_minutes: 20
 # Override per-run with --lookback-days N (e.g. to backfill after a long gap).
 lookback_days: 5
 
-# yt-dlp fallback search options. Only used when YOUTUBE_API_KEY is not set.
-# enabled: false by default — set to true to opt in to yt-dlp fallback.
-# yt-dlp fallback has known limitations: date filtering is approximate, full
-# descriptions require per-video fetches that frequently hit YouTube bot-checks,
-# and recall may be lower than the YouTube API. Prefer setting YOUTUBE_API_KEY.
+# Backend selection:
+#   - search:
+#       auto        -> YouTube API when YOUTUBE_API_KEY exists, else yt-dlp
+#       youtube_api -> force official API search
+#       yt_dlp      -> force yt-dlp search even if YOUTUBE_API_KEY exists
+#   - metadata:
+#       auto        -> YouTube API when YOUTUBE_API_KEY exists, else yt-dlp
+#       youtube_api -> force videos.list metadata enrichment
+#       yt_dlp      -> force per-video yt-dlp enrichment
+# Useful hybrid mode:
+#   backends:
+#     search: yt_dlp
+#     metadata: youtube_api
+backends:
+  search: auto
+  metadata: auto
+
+# yt-dlp options. These apply whenever either backend resolves to yt_dlp.
+# yt-dlp has known limitations: date filtering is approximate, and per-video
+# metadata fetches frequently hit YouTube bot-checks unless cookies are provided.
+# Prefer YouTube API metadata when a key is available.
 ytdlp_search:
-  enabled: true
   use_this_month_filter: true
   cookies_from_browser: ""  # chrome, firefox, or safari — leave blank to disable
 

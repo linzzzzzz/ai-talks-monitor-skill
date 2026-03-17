@@ -246,6 +246,51 @@ def search_youtube_channel(channel_id: str, published_after: str, api_key: str) 
     return results
 
 
+def fetch_youtube_video_details(video_ids: list[str], api_key: str) -> dict[str, dict]:
+    """Fetch full metadata for YouTube video IDs via videos.list."""
+    details: dict[str, dict] = {}
+    for start in range(0, len(video_ids), 50):
+        batch_ids = video_ids[start:start + 50]
+        if not batch_ids:
+            continue
+        details_resp = requests.get(
+            "https://www.googleapis.com/youtube/v3/videos",
+            params={"part": "contentDetails,snippet", "id": ",".join(batch_ids), "key": api_key},
+            timeout=15,
+        )
+        details_resp.raise_for_status()
+        for item in details_resp.json().get("items", []):
+            details[item["id"]] = item
+    return details
+
+
+def enrich_with_youtube_api_metadata(candidates: list[dict], api_key: str) -> None:
+    """Backfill exact metadata for candidates in-place using videos.list."""
+    video_ids = [video["id"] for video in candidates if video.get("id")]
+    if not video_ids:
+        return
+
+    print(f"\nFetching metadata for {len(video_ids)} candidate(s) via YouTube Data API...")
+    details = fetch_youtube_video_details(video_ids, api_key)
+    for video in candidates:
+        detail = details.get(video["id"])
+        if not detail:
+            continue
+        snippet = detail.get("snippet", {})
+        content = detail.get("contentDetails", {})
+        if snippet.get("title"):
+            video["title"] = snippet["title"]
+        if snippet.get("channelTitle"):
+            video["channel"] = snippet["channelTitle"]
+        if "description" in snippet:
+            video["description"] = snippet.get("description") or ""
+        if snippet.get("publishedAt"):
+            video["published_at"] = snippet["publishedAt"]
+            video["published_at_precision"] = "exact"
+        if content.get("duration"):
+            video["duration_min"] = parse_iso_duration_minutes(content["duration"])
+
+
 def search_youtube_channel_ytdlp(channel_url: str, published_after: str, max_results: int = 30, cookies_browser: str = "") -> list[dict]:
     """Fetch recent videos from a YouTube channel using yt-dlp (no API key required)."""
     cutoff = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
@@ -777,17 +822,32 @@ def cmd_fetch_candidates(args) -> None:
     config = load_config()
     state = load_state()
     ytdlp_search_config = config.get("ytdlp_search", {})
+    backend_config = config.get("backends", {})
     use_this_month_filter = ytdlp_search_config.get("use_this_month_filter", False)
 
     api_key = os.environ.get("YOUTUBE_API_KEY", "")
-    ytdlp_enabled = ytdlp_search_config.get("enabled", False)
     cookies_browser = ytdlp_search_config.get("cookies_from_browser") or ""
+    search_backend = backend_config.get("search", "auto")
+    metadata_backend = backend_config.get("metadata", "auto")
 
-    if api_key:
+    if search_backend == "auto":
+        resolved_search_backend = "youtube_api" if api_key else "yt_dlp"
+    else:
+        resolved_search_backend = search_backend
+
+    if resolved_search_backend == "youtube_api" and not api_key:
+        print(
+            "Config requests backends.search: youtube_api but YOUTUBE_API_KEY is not set.\n"
+            "Set YOUTUBE_API_KEY or switch backends.search to yt_dlp/auto."
+        )
+        return
+
+    if resolved_search_backend == "youtube_api":
         def do_search(query: str, published_after: str) -> list[dict]:
             return search_youtube(query, published_after, api_key)
-    elif ytdlp_enabled:
-        print("No YOUTUBE_API_KEY set — using yt-dlp fallback (date filtering approximate).\n")
+    elif resolved_search_backend == "yt_dlp":
+        print("Using yt-dlp for search discovery (date filtering approximate).\n")
+
         def do_search(query: str, published_after: str) -> list[dict]:
             return search_youtube_ytdlp(
                 query,
@@ -796,9 +856,18 @@ def cmd_fetch_candidates(args) -> None:
                 cookies_browser=cookies_browser,
             )
     else:
+        print(f"Unknown backends.search value: {resolved_search_backend}")
+        return
+
+    if metadata_backend == "auto":
+        resolved_metadata_backend = "youtube_api" if api_key else "yt_dlp"
+    else:
+        resolved_metadata_backend = metadata_backend
+
+    if resolved_metadata_backend == "youtube_api" and not api_key:
         print(
-            "No YOUTUBE_API_KEY set and yt-dlp fallback is disabled.\n"
-            "Set YOUTUBE_API_KEY, or set ytdlp_search.enabled: true in config.yaml to use yt-dlp."
+            "Config requests backends.metadata: youtube_api but YOUTUBE_API_KEY is not set.\n"
+            "Set YOUTUBE_API_KEY or switch backends.metadata to yt_dlp/auto."
         )
         return
 
@@ -828,7 +897,7 @@ def cmd_fetch_candidates(args) -> None:
         person_candidates.extend(
             collect_candidates(videos, leader["name"], seen_ids, min_duration)
         )
-        if not api_key:
+        if resolved_search_backend == "yt_dlp":
             time.sleep(ytdlp_delay)
 
     topics_config = config.get("topics", {})
@@ -845,7 +914,7 @@ def cmd_fetch_candidates(args) -> None:
             topic_candidates.extend(
                 collect_candidates(videos, f"Topic: {topic_name}", seen_ids, topic_min)
             )
-            if not api_key:
+            if resolved_search_backend == "yt_dlp":
                 time.sleep(ytdlp_delay)
 
     channels_config = config.get("channels", {})
@@ -854,13 +923,16 @@ def cmd_fetch_candidates(args) -> None:
             channel_name = channel["name"]
             print(f"Channel: {channel_name}...")
             try:
-                if api_key and channel.get("channel_id"):
+                if resolved_search_backend == "youtube_api" and channel.get("channel_id"):
                     videos = search_youtube_channel(channel["channel_id"], published_after, api_key)
-                elif channel.get("url") and ytdlp_enabled:
+                elif resolved_search_backend == "yt_dlp" and channel.get("url"):
                     videos = search_youtube_channel_ytdlp(channel["url"], published_after, cookies_browser=cookies_browser)
                     time.sleep(ytdlp_delay)
                 else:
-                    reason = "no url configured" if not channel.get("url") else "yt-dlp fallback disabled (set ytdlp_search.enabled: true)"
+                    if resolved_search_backend == "youtube_api":
+                        reason = "no channel_id configured"
+                    else:
+                        reason = "no url configured"
                     print(f"  Skipping: {reason}")
                     continue
             except (requests.exceptions.RequestException, RuntimeError) as e:
@@ -878,7 +950,15 @@ def cmd_fetch_candidates(args) -> None:
         if not c.get("description") or c.get("published_at_precision") != "exact"
     ]
     if needs_enrichment:
-        enrich_ytdlp_descriptions(needs_enrichment, cookies_browser=cookies_browser)
+        if resolved_metadata_backend == "youtube_api":
+            try:
+                enrich_with_youtube_api_metadata(needs_enrichment, api_key)
+            except requests.exceptions.RequestException as e:
+                print(f"Metadata enrichment error: {e}")
+        elif resolved_metadata_backend == "yt_dlp":
+            enrich_ytdlp_descriptions(needs_enrichment, cookies_browser=cookies_browser)
+        else:
+            print(f"Unknown backends.metadata value: {resolved_metadata_backend}")
 
     write_json(CANDIDATES_FILE, all_candidates)
     write_json(PEOPLE_CANDIDATES_FILE, person_candidates)

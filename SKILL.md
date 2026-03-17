@@ -80,7 +80,7 @@ For each video, decide based on its label:
 - **Channel entries** (`label` = "Channel: X"): Is this a genuine AI-related talk or interview? These come from curated high-signal channels, so the bar is: does it feature an AI researcher, founder, or thought leader speaking in their own words?
 - **Topic search entries** (`label` = "Topic: X"): Two checks must both pass:
   1. Is this a genuine first-person talk or interview (not a third-party explainer/commentary)?
-  2. If the topic has `require_org_confirmation: true` in config.yaml: can you confirm from the title or description that the speaker is affiliated with one of the `trusted_orgs`? If the description is absent or too vague to confirm affiliation, reject.
+  2. If the topic has `require_org_confirmation: true` in config.yaml: can you confirm from the title or description that the speaker is affiliated with one of the orgs listed under the **top-level `trusted_orgs` key** in `config.yaml`? Note: `trusted_orgs` is a top-level config key — not a field inside each search entry. Read it from `config["trusted_orgs"]`, not from within the search entry. If the description is absent or too vague to confirm affiliation, reject.
   Reject if either check fails.
 
 **Same-event deduplication — across candidates:**
@@ -135,7 +135,7 @@ python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/accepted
 ```
 This writes both `ai_talks.xml` (English) and `ai_talks_zh.xml` (Chinese titles and translated descriptions), updates `state.json`, sends a notification if configured, and pushes to the feeds repo if `AI_TALKS_FEEDS_REPO` is set.
 
-Note: `--commit-file` will refuse to publish any item missing a `published_at` date (can happen with yt-dlp fallback). If this occurs, re-run `--fetch-candidates` with `YOUTUBE_API_KEY` set, or set `ytdlp_search.cookies_from_browser` in `config.yaml`, then retry.
+Note: `--commit-file` will refuse to publish any item missing a `published_at` date (can happen with yt-dlp metadata fallback). If this occurs, re-run `--fetch-candidates` with `YOUTUBE_API_KEY` set and `backends.metadata: youtube_api`, or set `ytdlp_search.cookies_from_browser` in `config.yaml`, then retry.
 
 Use `--dry-run` to preview without writing files or updating state:
 ```bash
@@ -185,9 +185,10 @@ Read and display `thought_leaders`, `channels.list` (if enabled), and `topics.se
 ### Adjust settings
 - `min_duration_minutes` — minimum video length to consider (default: 20). Raise to cut more noise.
 - `lookback_days` — rolling search window in days (default: 5). Every run searches this far back.
-- `ytdlp_search.enabled` — set to `true` to enable yt-dlp as a fallback when `YOUTUBE_API_KEY` is not set (default: `false`). yt-dlp has known limitations: approximate date filtering, descriptions require per-video fetches that often hit bot-checks. Prefer setting `YOUTUBE_API_KEY`.
-- `ytdlp_search.use_this_month_filter` — when using yt-dlp fallback, optionally apply a YouTube-side "This month" prefilter before local date filtering (default: `true`). Reduces stale results but may also reduce recall; local date filtering remains the authoritative cutoff either way.
-- `ytdlp_search.cookies_from_browser` — browser to pull cookies from when using yt-dlp (`chrome`, `firefox`, or `safari`; default: `""`). Set this if yt-dlp hits YouTube bot-checks or if you want full video descriptions (descriptions require per-video fetches that fail without auth).
+- `backends.search` — `auto`, `youtube_api`, or `yt_dlp`. Use `yt_dlp` to save quota on discovery searches.
+- `backends.metadata` — `auto`, `youtube_api`, or `yt_dlp`. A good hybrid setup is `search: yt_dlp` plus `metadata: youtube_api`.
+- `ytdlp_search.use_this_month_filter` — when `backends.search` uses yt-dlp, optionally apply a YouTube-side "This month" prefilter before local date filtering (default: `true`). Reduces stale results but may also reduce recall; local date filtering remains the authoritative cutoff either way.
+- `ytdlp_search.cookies_from_browser` — browser to pull cookies from when a yt-dlp backend is used (`chrome`, `firefox`, or `safari`; default: `""`). Set this if yt-dlp hits YouTube bot-checks or if you want yt-dlp metadata fallback to fetch full descriptions.
 - `notifications.backend` — `telegram`, `openclaw`, or `none`
 - `notifications.openclaw.channel` / `notifications.openclaw.target` / `notifications.openclaw.account` — used when routing notifications through OpenClaw, including Feishu support
 
