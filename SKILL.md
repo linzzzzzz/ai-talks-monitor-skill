@@ -18,7 +18,7 @@ metadata:
 # AI Talks Monitor
 
 Watches YouTube for new long-form original talks and interviews featuring AI thought leaders.
-The script handles YouTube search and state; you (Claude) handle the classification step.
+The script handles YouTube search and state; you handle the classification step.
 
 Supports three modes:
 - **Person watchlist** (default): tracks specific people across any channel they appear on
@@ -42,7 +42,7 @@ Supports three modes:
 
 ### Check for new talks now
 
-This is a two-phase process: the script fetches candidates, you classify them, then the script commits the ones you accept.
+This is a four-phase process: the script fetches candidates, you classify them in smaller batches, the script prepares an accepted-items draft, then you enrich only those accepted items before commit.
 
 **Phase 1 — fetch candidates from YouTube:**
 ```bash
@@ -57,11 +57,25 @@ Use `--limit N` to process only the first N entries per category — useful for 
 python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates --limit 2
 ```
 
-**Phase 2 — classify and translate (your job):**
+**Phase 2 — classify only (your job):**
 
 First, read `SKILL_DIR/output/state.json` (if it exists) to load the `items` list — the recently committed talks. You'll need this for cross-run deduplication below.
 
-Then read `SKILL_DIR/output/candidates.json`. For each video, decide based on its label:
+Then review the grouped candidate files separately:
+- `SKILL_DIR/output/candidates_people.json`
+- `SKILL_DIR/output/candidates_topics.json`
+- `SKILL_DIR/output/candidates_channels.json`
+
+Use `SKILL_DIR/output/candidates.json` only as the combined fallback view. `label` means the source bucket that surfaced the candidate, not a confirmed speaker/topic classification. Treat it as a weak hint only.
+
+Examples:
+- `Sam Altman` means this came from the Sam Altman watchlist query, not that Sam Altman is definitely the speaker.
+- `Topic: OpenAI Talks` means this came from a topic search, not that the video is necessarily about OpenAI in a meaningful way.
+- `Channel: Dwarkesh Patel` means this came from that channel watchlist, not that the guest/topic is Dwarkesh Patel.
+
+If `label` conflicts with the title or description, trust the title/description. Do not accept a candidate just because its `label` looks relevant.
+
+For each video, decide based on its label:
 - **Person watchlist entries** (`label` = a person's name): Is the named person a direct guest/participant in this video, or just being discussed (reaction, summary, news report about them)?
 - **Channel entries** (`label` = "Channel: X"): Is this a genuine AI-related talk or interview? These come from curated high-signal channels, so the bar is: does it feature an AI researcher, founder, or thought leader speaking in their own words?
 - **Topic search entries** (`label` = "Topic: X"): Two checks must both pass:
@@ -76,11 +90,28 @@ Multiple candidates may be different channels reuploading the same underlying ev
 If a candidate appears to be the same event as a talk already in `output/state.json items` (same person, same event, similar timeframe), reject it even though the video ID is new.
 
 For each candidate, assign it to one of three buckets:
-- **Accept**: genuine first-person talk, enough information to be confident.
+- **Accept**: genuine first-person talk, and the actual speaker/guest in the video is clearly identified from the title or opening description. For person watchlist entries, this means the labeled person is clearly the direct guest/speaker in the video, not just mentioned or discussed.
 - **Definitive reject**: clearly derivative, duplicate, or confirmed irrelevant — enough information to be certain it should never appear again.
 - **Uncertain**: not enough information to decide (e.g. description is empty or too vague, title is ambiguous). Leave these in neither bucket — they will resurface on the next run and can be re-evaluated once a description is available.
 
-For each **accepted** video, also generate:
+Write `SKILL_DIR/output/review.json` with this structure:
+```json
+{
+  "accepted": ["VIDEO_ID_A", "VIDEO_ID_B"],
+  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"]
+}
+```
+
+IDs in neither `accepted` nor `rejected` are left unmarked in state and will reappear on the next run.
+
+**Phase 3 — prepare accepted items for enrichment:**
+```bash
+python3 SKILL_DIR/scripts/check_talks.py --prepare-accepted SKILL_DIR/output/review.json
+```
+
+This writes `SKILL_DIR/output/accepted.json` with only the accepted candidates plus their original metadata, so you can enrich just those items.
+
+For each accepted video in `output/accepted.json`, generate:
 - `description_clean`: a cleaned version of the available video description in its original language
 - `title_zh`: a concise Chinese translation of the title (not a literal word-for-word translation — make it natural and informative)
 - `description_zh`: a Chinese translation of `description_clean`, written for a Chinese-speaking audience
@@ -96,26 +127,9 @@ For `description_zh`:
 - Translate `description_clean` faithfully into natural Chinese
 - Do not add any information not present in the metadata
 
-**Important:** `output/accepted.json` must be valid JSON. Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking the JSON string delimiters.
+**Important:** `output/accepted.json` must remain valid JSON. Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking the JSON string delimiters.
 
-Write `SKILL_DIR/output/accepted.json` with this structure:
-```json
-{
-  "accepted": [
-    {
-      "id": "VIDEO_ID",
-      "description_clean": "OpenAI CEO Sam Altman and Amazon CEO Andy Jassy discuss OpenAI's latest funding, AI infrastructure expansion, and where the industry is heading.",
-      "title_zh": "山姆·奥特曼与安迪·贾西对话：OpenAI融资与AI未来",
-      "description_zh": "OpenAI CEO 山姆·奥特曼与亚马逊 CEO 安迪·贾西在 CNBC 节目中讨论 OpenAI 最新融资、AI 基础设施扩张以及行业未来走向。"
-    }
-  ],
-  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"]
-}
-```
-
-IDs in neither `accepted` nor `rejected` are left unmarked in state and will reappear on the next run.
-
-**Phase 3 — commit accepted videos:**
+**Phase 4 — commit accepted videos:**
 ```bash
 python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/accepted.json
 ```
@@ -179,7 +193,7 @@ Read and display `thought_leaders`, `channels.list` (if enabled), and `topics.se
 
 ## Automated Daily Check
 
-The fetch step can be scheduled unattended — `--fetch-candidates` only writes `candidates.json` and never modifies state, so it's safe to run on a timer. The commit step happens via the skill when you review.
+The fetch step can be scheduled unattended — `--fetch-candidates` only writes candidate files and never modifies state, so it's safe to run on a timer. The review/prepare/commit steps happen via the skill when you review.
 
 **macOS (launchd)** — runs even after reboots:
 ```bash
@@ -216,8 +230,9 @@ The fetch step can be scheduled unattended — `--fetch-candidates` only writes 
 ## How it works
 
 1. **YouTube search** (`--fetch-candidates`): Runs three source types — person watchlist (keyword search via API/yt-dlp), channel watchlist (channel feed via API with `channelId` or yt-dlp with `@handle`), topic searches (keyword search). All use a rolling `lookback_days` window.
-2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Writes survivors to `output/candidates.json`
-3. **Classification (you)**: Read `output/state.json` + `output/candidates.json`; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items
+2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Writes survivors to grouped candidate files plus `output/candidates.json`
+3. **Classification (you)**: Read `output/state.json` + the grouped candidate files; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items. Write decisions only to `output/review.json`
+4. **Accepted-item enrichment (you)**: Run `--prepare-accepted`, then add `description_clean`, `title_zh`, and `description_zh` only for accepted items
 4. **Commit** (`--commit ID ...`): Builds feeds with a rolling 30-day RSS window, updates `state.json`, sends a notification if configured
 
 ## TrendRadar integration
@@ -241,9 +256,10 @@ rss:
 ## Files
 
 - `SKILL.md` — this file
-- `scripts/check_talks.py` — main script: `--fetch-candidates` fetches to output/candidates.json; `--commit` writes RSS + state
-- `output/candidates.json` — auto-written by --fetch-candidates; read by you for classification
-- `output/accepted.json` — written by you during Phase 2 (IDs + description_clean + title_zh + description_zh); input to --commit-file
+- `scripts/check_talks.py` — main script: `--fetch-candidates` writes grouped candidate files, `--prepare-accepted` writes accepted.json draft, `--commit`/`--commit-file` write RSS + state
+- `output/candidates_people.json` / `output/candidates_topics.json` / `output/candidates_channels.json` — auto-written by `--fetch-candidates`; preferred inputs for classification
+- `output/review.json` — written by you during Phase 2 (accepted/rejected IDs only)
+- `output/accepted.json` — written by `--prepare-accepted`, then enriched by you during Phase 3; input to `--commit-file`
 - `config.yaml` — watchlist and settings (edit this to customize)
 - `output/state.json` — auto-managed: seen video IDs, last_checked timestamp, rolling item list
 - `output/ai_talks.xml` — auto-generated RSS 2.0 feed (English)

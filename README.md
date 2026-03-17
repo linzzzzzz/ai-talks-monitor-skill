@@ -26,10 +26,16 @@ YouTube search (API key or yt-dlp fallback)
 Heuristic pre-filter  ← rejects "reaction", "summary", "breakdown", CJK equivalents, etc.
     │
     ▼
-output/candidates.json  ← Claude reads, classifies, and translates
+output/candidates_people.json / output/candidates_topics.json / output/candidates_channels.json  ← review in smaller batches
     │
     ▼
-output/accepted.json  ← Claude writes: accepted IDs + cleaned source descriptions + Chinese titles/descriptions + definitive rejects
+output/review.json  ← agent writes: accepted/rejected IDs only
+    │
+    ▼
+--prepare-accepted output/review.json
+    │
+    ▼
+output/accepted.json  ← script writes accepted-item draft; agent enriches only those items
     │
     ▼
 --commit-file output/accepted.json
@@ -38,7 +44,7 @@ output/accepted.json  ← Claude writes: accepted IDs + cleaned source descripti
 output/ai_talks.xml (English) + output/ai_talks_zh.xml (Chinese)  +  optional notification (Telegram or OpenClaw)
 ```
 
-The workflow is split into phases so the fetch step can run unattended on a schedule, and Claude only enters the loop for classification and translation.
+The workflow is split into phases so the fetch step can run unattended on a schedule, and the agent only enters the loop for classification and accepted-item enrichment.
 
 ## Installation
 
@@ -87,11 +93,19 @@ On first run, add `--lookback-days 30` to search further back:
 python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates --lookback-days 30
 ```
 
-**Step 2 — classify (Claude's job):**
+**Step 2 — classify only:**
 
-In Claude Code, invoke the skill. Claude reads `output/candidates.json`, classifies each video (accept / definitive reject / uncertain), and writes `output/accepted.json` with a cleaned source-language description plus Chinese title/description for accepted videos.
+Invoke the skill and review the grouped candidate files. Write `output/review.json` with accepted/rejected IDs only.
 
-**Step 3 — commit:**
+**Step 3 — prepare accepted items:**
+
+```bash
+python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --prepare-accepted ~/.claude/skills/ai-talks-monitor/output/review.json
+```
+
+Then enrich only the accepted items in `output/accepted.json` with `description_clean`, `title_zh`, and `description_zh`.
+
+**Step 4 — commit:**
 
 ```bash
 python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --commit-file ~/.claude/skills/ai-talks-monitor/output/accepted.json
@@ -109,7 +123,7 @@ Once installed as a skill, interact conversationally:
 
 > "Show me who's being monitored"
 
-Claude handles the full workflow: fetching, classifying, translating, and committing — guided by the instructions in `SKILL.md`.
+The agent handles the full workflow: fetching, classifying, enriching accepted items, and committing — guided by the instructions in `SKILL.md`.
 
 ## Configuration
 
@@ -280,9 +294,10 @@ launchctl load ~/Library/LaunchAgents/com.openclaw.ai-talks-monitor.plist
 |------|---------|
 | `scripts/check_talks.py` | Main script |
 | `config.yaml` | Watchlist and settings |
-| `SKILL.md` | Claude Code skill instructions |
-| `output/candidates.json` | Auto-written by `--fetch-candidates`; read by Claude for classification |
-| `output/accepted.json` | Written by Claude; input to `--commit-file` |
+| `SKILL.md` | Skill instructions |
+| `output/candidates_people.json` / `output/candidates_topics.json` / `output/candidates_channels.json` | Auto-written by `--fetch-candidates`; preferred review inputs |
+| `output/review.json` | Written during classification; accepted/rejected IDs only |
+| `output/accepted.json` | Written by `--prepare-accepted`, then enriched by the agent; input to `--commit-file` |
 | `output/state.json` | Auto-managed: seen video IDs (with 30-day expiry), last_checked timestamp, rolling RSS items |
 | `output/ai_talks.xml` | Auto-generated English RSS 2.0 feed |
 | `output/ai_talks_zh.xml` | Auto-generated Chinese RSS 2.0 feed |
@@ -292,8 +307,9 @@ Delete `output/state.json` to trigger a full re-scan on the next run.
 ## CLI reference
 
 ```
---fetch-candidates           Search YouTube, apply heuristic filter, write output/candidates.json
---commit-file FILE           Read output/accepted.json (written by Claude); write both RSS feeds, update state
+--fetch-candidates           Search YouTube, apply heuristic filter, write grouped candidate files
+--prepare-accepted FILE      Read output/review.json and write output/accepted.json draft
+--commit-file FILE           Read output/accepted.json and write both RSS feeds, update state
 --commit ID [ID ...]         Legacy: accept these video IDs, write English feed only, update state
 
 --dry-run                    Preview without writing files or updating state

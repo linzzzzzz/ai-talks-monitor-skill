@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
 """
-AI Talks Monitor — two-phase workflow:
+AI Talks Monitor — review workflow:
 
   Phase 1 — --fetch-candidates:
-    Search YouTube, apply heuristic filters, write candidates.json.
+    Search YouTube, apply heuristic filters, write grouped candidate files.
 
-  Phase 2 — --commit ID [ID ...]:
-    Accept specific video IDs (chosen by Claude after reviewing candidates),
-    write ai_talks.xml RSS feed, update state, optionally notify Slack.
+  Phase 2 — review decisions:
+    The agent writes review.json with accepted/rejected IDs only.
+
+  Phase 3 — --prepare-accepted review.json:
+    Build accepted.json as an enrichment draft for accepted items only.
+
+  Phase 4 — --commit-file accepted.json:
+    Publish accepted items, write RSS feeds, update state, notify subscribers.
 
 Outputs:
-  - candidates.json  — written by --fetch-candidates for Claude to review
-  - ai_talks.xml     — RSS 2.0 feed, written by --commit
-  - notifications    — optional Telegram/OpenClaw delivery on --commit
+  - candidates.json / candidates_people.json / candidates_topics.json / candidates_channels.json
+  - review.json
+  - accepted.json
+  - ai_talks.xml / ai_talks_zh.xml
 """
 
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import re
@@ -40,6 +47,10 @@ STATE_FILE = OUTPUT_DIR / "state.json"
 RSS_FILE = OUTPUT_DIR / "ai_talks.xml"
 RSS_FILE_ZH = OUTPUT_DIR / "ai_talks_zh.xml"
 CANDIDATES_FILE = OUTPUT_DIR / "candidates.json"
+PEOPLE_CANDIDATES_FILE = OUTPUT_DIR / "candidates_people.json"
+TOPIC_CANDIDATES_FILE = OUTPUT_DIR / "candidates_topics.json"
+CHANNEL_CANDIDATES_FILE = OUTPUT_DIR / "candidates_channels.json"
+REVIEW_FILE = OUTPUT_DIR / "review.json"
 ACCEPTED_FILE = OUTPUT_DIR / "accepted.json"
 
 RSS_RETENTION_DAYS = 30
@@ -92,9 +103,25 @@ def save_state(state: dict) -> None:
         json.dump(state, f, indent=2)
 
 
+def write_json(path: Path, data: object) -> None:
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
 def is_derivative(title: str) -> bool:
     title_lower = title.lower()
     return any(kw.lower() in title_lower for kw in DERIVATIVE_KEYWORDS)
+
+
+def is_person_label(label: str) -> bool:
+    return not label.startswith("Topic: ") and not label.startswith("Channel: ")
+
+
+def mentions_person(video: dict, person_name: str) -> bool:
+    haystack = " ".join([
+        html.unescape(video.get("title", "")),
+        html.unescape(video.get("description", "")),
+    ]).lower()
+    return person_name.lower() in haystack
 
 
 def parse_iso_duration_minutes(duration: str) -> int:
@@ -444,10 +471,36 @@ def collect_candidates(
         if is_derivative(video["title"]):
             print(f"  [heuristic filter] {video['title']}")
             continue
+        if is_person_label(label) and not mentions_person(video, label):
+            print(f"  [person mismatch] {video['title']}")
+            continue
         video["label"] = label
         candidates.append(video)
         print(f"  [candidate] {video['title']} ({video['duration_min']}min)")
     return candidates
+
+
+def build_accepted_draft(candidates: list[dict], accepted_ids: list[str], rejected_ids: list[str]) -> dict:
+    candidates_by_id = {v["id"]: v for v in candidates}
+    accepted = []
+    for vid_id in accepted_ids:
+        video = candidates_by_id.get(vid_id)
+        if not video:
+            continue
+        accepted.append({
+            "id": video["id"],
+            "label": video.get("label", ""),
+            "title": video.get("title", ""),
+            "channel": video.get("channel", ""),
+            "description": video.get("description", ""),
+            "published_at": video.get("published_at"),
+            "duration_min": video.get("duration_min"),
+            "url": video.get("url", ""),
+            "description_clean": "",
+            "title_zh": "",
+            "description_zh": "",
+        })
+    return {"accepted": accepted, "rejected": rejected_ids}
 
 
 def display_source(video: dict) -> str:
@@ -720,7 +773,7 @@ def build_rss_zh(items: list[dict]) -> str:
 
 
 def cmd_fetch_candidates(args) -> None:
-    """Search YouTube, apply heuristic filters, write candidates.json."""
+    """Search YouTube, apply heuristic filters, write grouped candidate files."""
     config = load_config()
     state = load_state()
     ytdlp_search_config = config.get("ytdlp_search", {})
@@ -758,7 +811,9 @@ def cmd_fetch_candidates(args) -> None:
     print(f"Searching for videos published after {published_after} ({lookback_days}d rolling window)\n")
 
     seen_ids: set[str] = set(load_seen_ids(state).keys())
-    all_candidates: list[dict] = []
+    person_candidates: list[dict] = []
+    topic_candidates: list[dict] = []
+    channel_candidates: list[dict] = []
     limit = args.limit  # None means no limit
 
     ytdlp_delay = 0.5  # seconds between yt-dlp search calls to avoid bot-checks
@@ -770,7 +825,7 @@ def cmd_fetch_candidates(args) -> None:
         except (requests.exceptions.RequestException, RuntimeError) as e:
             print(f"  Search error: {e}")
             continue
-        all_candidates.extend(
+        person_candidates.extend(
             collect_candidates(videos, leader["name"], seen_ids, min_duration)
         )
         if not api_key:
@@ -787,7 +842,7 @@ def cmd_fetch_candidates(args) -> None:
             except (requests.exceptions.RequestException, RuntimeError) as e:
                 print(f"  Search error: {e}")
                 continue
-            all_candidates.extend(
+            topic_candidates.extend(
                 collect_candidates(videos, f"Topic: {topic_name}", seen_ids, topic_min)
             )
             if not api_key:
@@ -811,9 +866,11 @@ def cmd_fetch_candidates(args) -> None:
             except (requests.exceptions.RequestException, RuntimeError) as e:
                 print(f"  Search error: {e}")
                 continue
-            all_candidates.extend(
+            channel_candidates.extend(
                 collect_candidates(videos, f"Channel: {channel_name}", seen_ids, min_duration)
             )
+
+    all_candidates = person_candidates + topic_candidates + channel_candidates
 
     # Backfill exact metadata for yt-dlp candidates when non-flat extraction is available.
     needs_enrichment = [
@@ -823,10 +880,46 @@ def cmd_fetch_candidates(args) -> None:
     if needs_enrichment:
         enrich_ytdlp_descriptions(needs_enrichment, cookies_browser=cookies_browser)
 
-    with open(CANDIDATES_FILE, "w") as f:
-        json.dump(all_candidates, f, indent=2)
+    write_json(CANDIDATES_FILE, all_candidates)
+    write_json(PEOPLE_CANDIDATES_FILE, person_candidates)
+    write_json(TOPIC_CANDIDATES_FILE, topic_candidates)
+    write_json(CHANNEL_CANDIDATES_FILE, channel_candidates)
 
-    print(f"\n{len(all_candidates)} candidate(s) written to {CANDIDATES_FILE}")
+    print(
+        f"\n{len(all_candidates)} candidate(s) written:\n"
+        f"  {PEOPLE_CANDIDATES_FILE.name}: {len(person_candidates)}\n"
+        f"  {TOPIC_CANDIDATES_FILE.name}: {len(topic_candidates)}\n"
+        f"  {CHANNEL_CANDIDATES_FILE.name}: {len(channel_candidates)}\n"
+        f"  {CANDIDATES_FILE.name}: {len(all_candidates)}"
+    )
+
+
+def cmd_prepare_accepted(args) -> None:
+    """Read review.json with accepted/rejected IDs and write accepted.json draft."""
+    review_file = Path(args.prepare_accepted)
+    if not review_file.exists():
+        print(f"File not found: {review_file}")
+        return
+    if not CANDIDATES_FILE.exists():
+        print("No candidates.json found. Run --fetch-candidates first.")
+        return
+
+    review = json.loads(review_file.read_text())
+    accepted_ids = review.get("accepted", []) if isinstance(review, dict) else []
+    rejected_ids = review.get("rejected", []) if isinstance(review, dict) else []
+
+    if not accepted_ids and not rejected_ids:
+        print("No accepted or rejected IDs found in review file.")
+        return
+
+    candidates = json.loads(CANDIDATES_FILE.read_text())
+    draft = build_accepted_draft(candidates, accepted_ids, rejected_ids)
+    write_json(ACCEPTED_FILE, draft)
+    print(
+        f"Wrote accepted draft to {ACCEPTED_FILE}\n"
+        f"  accepted: {len(draft['accepted'])}\n"
+        f"  rejected: {len(draft['rejected'])}"
+    )
 
 
 def push_to_feeds_repo(rss_files: list[Path], feeds_repo: Path, dry_run: bool = False) -> None:
@@ -932,7 +1025,7 @@ def cmd_commit(args) -> None:
 
 
 def cmd_commit_file(args) -> None:
-    """Read accepted.json (with description_clean/title_zh/description_zh), write both English and Chinese RSS feeds."""
+    """Read accepted.json draft/final file and write both English and Chinese RSS feeds."""
     config = load_config()
     accepted_file = Path(args.commit_file)
     if not accepted_file.exists():
@@ -1068,9 +1161,11 @@ def main() -> None:
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fetch-candidates", action="store_true",
-                      help="Search YouTube, apply heuristic filter, write candidates.json")
+                      help="Search YouTube, apply heuristic filter, write grouped candidate files")
+    mode.add_argument("--prepare-accepted", metavar="FILE",
+                      help="Read review.json (accepted/rejected IDs only) and write accepted.json draft")
     mode.add_argument("--commit-file", metavar="FILE",
-                      help="Read accepted.json (with description_clean/title_zh/description_zh) and write both English and Chinese RSS feeds")
+                      help="Read accepted.json (draft/final) and write both English and Chinese RSS feeds")
     mode.add_argument("--commit", nargs="+", metavar="ID",
                       help="Accept these video IDs from candidates.json, write English RSS only (no Chinese feed)")
 
@@ -1078,6 +1173,8 @@ def main() -> None:
 
     if args.fetch_candidates:
         cmd_fetch_candidates(args)
+    elif args.prepare_accepted:
+        cmd_prepare_accepted(args)
     elif args.commit_file:
         cmd_commit_file(args)
     else:
