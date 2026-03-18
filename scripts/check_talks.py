@@ -124,6 +124,20 @@ def mentions_person(video: dict, person_name: str) -> bool:
     return person_name.lower() in haystack
 
 
+def strip_description_noise(text: str) -> str:
+    """Remove URLs, hashtag blocks, and boilerplate from a YouTube description."""
+    text = re.sub(r'https?://\S+', '', text)
+    text = re.sub(r'(?:#\S+[\s]*){3,}', '', text)
+    text = re.sub(
+        r'(?i)^[\s]*(?:subscribe to|follow us on|like our|join the conversation'
+        r'|got a story|send us an email|your voice matters).*$',
+        '', text, flags=re.MULTILINE,
+    )
+    text = re.sub(r'^-{3,}\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 def parse_iso_duration_minutes(duration: str) -> int:
     hours = int(m.group(1)) if (m := re.search(r"(\d+)H", duration)) else 0
     mins = int(m.group(1)) if (m := re.search(r"(\d+)M", duration)) else 0
@@ -525,10 +539,20 @@ def collect_candidates(
     return candidates
 
 
-def build_accepted_draft(candidates: list[dict], accepted_ids: list[str], rejected_ids: list[str]) -> dict:
+def build_accepted_draft(candidates: list[dict], accepted_entries: list[dict], rejected_ids: list[str]) -> dict:
+    """Build accepted.json draft from review decisions.
+
+    accepted_entries: list of {id, reason} dicts (new format) or plain ID strings (legacy).
+    """
     candidates_by_id = {v["id"]: v for v in candidates}
     accepted = []
-    for vid_id in accepted_ids:
+    for entry in accepted_entries:
+        if isinstance(entry, dict):
+            vid_id = entry.get("id", "")
+            reason = entry.get("reason", "")
+        else:
+            vid_id = entry
+            reason = ""
         video = candidates_by_id.get(vid_id)
         if not video:
             continue
@@ -537,10 +561,11 @@ def build_accepted_draft(candidates: list[dict], accepted_ids: list[str], reject
             "label": video.get("label", ""),
             "title": video.get("title", ""),
             "channel": video.get("channel", ""),
-            "description": video.get("description", ""),
+            "description": strip_description_noise(video.get("description", "")),
             "published_at": video.get("published_at"),
             "duration_min": video.get("duration_min"),
             "url": video.get("url", ""),
+            "accept_reason": reason,
             "description_clean": "",
             "title_zh": "",
             "description_zh": "",
@@ -961,17 +986,64 @@ def cmd_fetch_candidates(args) -> None:
             print(f"Unknown backends.metadata value: {resolved_metadata_backend}")
 
     write_json(CANDIDATES_FILE, all_candidates)
-    write_json(PEOPLE_CANDIDATES_FILE, person_candidates)
-    write_json(TOPIC_CANDIDATES_FILE, topic_candidates)
-    write_json(CHANNEL_CANDIDATES_FILE, channel_candidates)
 
-    print(
-        f"\n{len(all_candidates)} candidate(s) written:\n"
-        f"  {PEOPLE_CANDIDATES_FILE.name}: {len(person_candidates)}\n"
-        f"  {TOPIC_CANDIDATES_FILE.name}: {len(topic_candidates)}\n"
-        f"  {CHANNEL_CANDIDATES_FILE.name}: {len(channel_candidates)}\n"
-        f"  {CANDIDATES_FILE.name}: {len(all_candidates)}"
-    )
+    # Split each category into chunk files of max CHUNK_SIZE items so
+    # every file fits in a single agent Read call (~200 lines).
+    CHUNK_SIZE = 15
+
+    def _slim_for_review(video: dict, max_desc: int = 500) -> dict:
+        """Strip a candidate to only the fields the model needs for classification."""
+        desc = video.get("description", "")
+        if len(desc) > max_desc:
+            desc = desc[:max_desc] + "..."
+        return {
+            "id": video["id"],
+            "title": video.get("title", ""),
+            "channel": video.get("channel", ""),
+            "description": desc,
+            "label": video.get("label", ""),
+        }
+
+    def _write_chunks(base_name: str, items: list[dict]) -> list[Path]:
+        """Write items into chunk files; return list of paths written."""
+        # Clean up any previous chunk files for this category.
+        for old in OUTPUT_DIR.glob(f"{base_name}*.json"):
+            old.unlink()
+        if not items:
+            return []
+        paths: list[Path] = []
+        for i in range(0, len(items), CHUNK_SIZE):
+            chunk = [_slim_for_review(v) for v in items[i : i + CHUNK_SIZE]]
+            suffix = f"_{i // CHUNK_SIZE + 1}" if len(items) > CHUNK_SIZE else ""
+            path = OUTPUT_DIR / f"{base_name}{suffix}.json"
+            write_json(path, chunk)
+            paths.append(path)
+        return paths
+
+    people_files = _write_chunks("candidates_people", person_candidates)
+    topic_files = _write_chunks("candidates_topics", topic_candidates)
+    channel_files = _write_chunks("candidates_channels", channel_candidates)
+
+    print(f"\n{len(all_candidates)} candidate(s) written:")
+
+    # Print classification read plan with exact file list.
+    print("\n--- CLASSIFICATION PLAN ---")
+    print("Process each file ONE AT A TIME: read → classify all items → write review file → next file. DO NOT READ NEXT FILE UNTIL the review file of current file is written.\n")
+    file_step = 0
+    for label, files, items in [
+        ("people", people_files, person_candidates),
+        ("topics", topic_files, topic_candidates),
+        ("channels", channel_files, channel_candidates),
+    ]:
+        if not files:
+            continue
+        for path in files:
+            file_step += 1
+            chunk_items = json.loads(path.read_text())
+            print(f"  Step {file_step}: Read {path.name} ({len(chunk_items)} items)")
+        print(f"    → After reading all {label} files above, write output/review_{label}.json\n")
+    print("After all review files are written, merge into output/review.json, then proceed to Phase 3.")
+    print("--- END CLASSIFICATION PLAN ---")
 
 
 def cmd_prepare_accepted(args) -> None:
@@ -985,15 +1057,43 @@ def cmd_prepare_accepted(args) -> None:
         return
 
     review = json.loads(review_file.read_text())
-    accepted_ids = review.get("accepted", []) if isinstance(review, dict) else []
+    raw_accepted = review.get("accepted", []) if isinstance(review, dict) else []
     rejected_ids = review.get("rejected", []) if isinstance(review, dict) else []
 
-    if not accepted_ids and not rejected_ids:
+    # Normalise: support both new [{id, reason}] format and legacy ["ID"] format.
+    accepted_entries = [
+        entry if isinstance(entry, dict) else {"id": entry, "reason": ""}
+        for entry in raw_accepted
+    ]
+
+    if not accepted_entries and not rejected_ids:
         print("No accepted or rejected IDs found in review file.")
         return
 
     candidates = json.loads(CANDIDATES_FILE.read_text())
-    draft = build_accepted_draft(candidates, accepted_ids, rejected_ids)
+
+    # --- Coverage check: every candidate must be accounted for ---
+    reviewed_ids = {
+        (e["id"] if isinstance(e, dict) else e) for e in raw_accepted
+    } | set(rejected_ids)
+    candidate_ids = {c["id"] for c in candidates}
+    missing = candidate_ids - reviewed_ids
+    if missing:
+        print(
+            f"ERROR: {len(missing)} candidate(s) not classified. "
+            f"Every candidate must appear in accepted or rejected.\n"
+            f"Missing IDs:\n"
+        )
+        for mid in sorted(missing):
+            title = next((c["title"] for c in candidates if c["id"] == mid), "?")
+            print(f"  {mid}: {title[:80]}")
+        print(
+            f"\nGo back and classify the missing candidates, "
+            f"then update {review_file.name} and re-run --prepare-accepted."
+        )
+        return
+
+    draft = build_accepted_draft(candidates, accepted_entries, rejected_ids)
     write_json(ACCEPTED_FILE, draft)
     print(
         f"Wrote accepted draft to {ACCEPTED_FILE}\n"

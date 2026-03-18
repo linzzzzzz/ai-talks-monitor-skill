@@ -131,7 +131,7 @@ lookback_days: 5
 #     search: yt_dlp
 #     metadata: youtube_api
 backends:
-  search: auto
+  search: yt_dlp
   metadata: auto
 
 # yt-dlp options. These apply whenever either backend resolves to yt_dlp.

@@ -31,7 +31,7 @@ Supports three modes:
    - `YOUTUBE_API_KEY` — YouTube Data API v3 key (free; get from Google Cloud Console)
    - `TELEGRAM_BOT_TOKEN` — Telegram bot token (optional; only for `notifications.backend: "telegram"`)
    - `TELEGRAM_CHAT_ID` — Telegram chat/channel ID to send notifications to (optional; only for `notifications.backend: "telegram"`)
-   - `AI_TALKS_FEEDS_REPO` — absolute path to a local git repo (optional; if set, `--commit` copies `ai_talks.xml` there and pushes automatically)
+   - `AI_TALKS_FEEDS_REPO` — absolute path to a local git repo (optional; if set, `--commit-file` copies RSS feeds there and pushes automatically)
 
 2. Install Python dependencies:
    ```
@@ -48,57 +48,40 @@ This is a four-phase process: the script fetches candidates, you classify them i
 ```bash
 python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates
 ```
-Use `--lookback-days N` to override the default rolling window — helpful for backfilling after a long gap:
-```bash
-python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates --lookback-days 30
-```
-Use `--limit N` to process only the first N entries per category — useful for quick tests without running the full watchlist:
-```bash
-python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates --limit 2
-```
+Do NOT add `--lookback-days` unless the user explicitly asks to backfill a longer period. The default rolling window in `config.yaml` is correct for normal runs.
 
-**Phase 2 — classify only (your job):**
+**Phase 2 — classify candidates (your job):**
 
-First, read `SKILL_DIR/output/state.json` (if it exists) to load the `items` list — the recently committed talks. You'll need this for cross-run deduplication below.
+First, read two reference files:
+- `SKILL_DIR/output/state.json` (if it exists) — load `items` for cross-run deduplication
+- `SKILL_DIR/CLASSIFY.md` — classification rules (read once, apply to every candidate)
 
-Then review the grouped candidate files separately:
-- `SKILL_DIR/output/candidates_people.json`
-- `SKILL_DIR/output/candidates_topics.json`
-- `SKILL_DIR/output/candidates_channels.json`
+The `--fetch-candidates` output ends with a **CLASSIFICATION PLAN** listing the exact files to process. Follow that plan step by step:
 
-Use `SKILL_DIR/output/candidates.json` only as the combined fallback view. `label` means the source bucket that surfaced the candidate, not a confirmed speaker/topic classification. Treat it as a weak hint only.
+**⚠️ DO NOT SKIP ANY FILE. You MUST read and classify EVERY file listed in the plan. `--prepare-accepted` will reject your review if any candidates are missing — you will have to redo the work. There are no shortcuts.**
 
-Examples:
-- `Sam Altman` means this came from the Sam Altman watchlist query, not that Sam Altman is definitely the speaker.
-- `Topic: OpenAI Talks` means this came from a topic search, not that the video is necessarily about OpenAI in a meaningful way.
-- `Channel: Dwarkesh Patel` means this came from that channel watchlist, not that the guest/topic is Dwarkesh Patel.
+1. Read each file listed in the plan (each file is small enough for a single read — no pagination needed)
+2. Classify every candidate in that file using `CLASSIFY.md` rules
+3. After all files for a category (people/topics/channels), write the review file
 
-If `label` conflicts with the title or description, trust the title/description. Do not accept a candidate just because its `label` looks relevant.
-
-For each video, decide based on its label:
-- **Person watchlist entries** (`label` = a person's name): Is the named person a direct guest/participant in this video, or just being discussed (reaction, summary, news report about them)?
-- **Channel entries** (`label` = "Channel: X"): Is this a genuine AI-related talk or interview? These come from curated high-signal channels, so the bar is: does it feature an AI researcher, founder, or thought leader speaking in their own words?
-- **Topic search entries** (`label` = "Topic: X"): Two checks must both pass:
-  1. Is this a genuine first-person talk or interview (not a third-party explainer/commentary)?
-  2. If the topic has `require_org_confirmation: true` in config.yaml: can you confirm from the title or description that the speaker is affiliated with one of the orgs listed under the **top-level `trusted_orgs` key** in `config.yaml`? Note: `trusted_orgs` is a top-level config key — not a field inside each search entry. Read it from `config["trusted_orgs"]`, not from within the search entry. If the description is absent or too vague to confirm affiliation, reject.
-  Reject if either check fails.
-
-**Same-event deduplication — across candidates:**
-Multiple candidates may be different channels reuploading the same underlying event (same person, same venue/date, nearly identical descriptions). Accept only one. Prefer: original/official channel > named news outlet > generic news reupload. Reject the rest.
-
-**Same-event deduplication — against state.json:**
-If a candidate appears to be the same event as a talk already in `output/state.json items` (same person, same event, similar timeframe), reject it even though the video ID is new.
-
-For each candidate, assign it to one of three buckets:
-- **Accept**: genuine first-person talk, and the actual speaker/guest in the video is clearly identified from the title or opening description. For person watchlist entries, this means the labeled person is clearly the direct guest/speaker in the video, not just mentioned or discussed.
-- **Definitive reject**: clearly derivative, duplicate, or confirmed irrelevant — enough information to be certain it should never appear again.
-- **Uncertain**: not enough information to decide (e.g. description is empty or too vague, title is ambiguous). Leave these in neither bucket — they will resurface on the next run and can be re-evaluated once a description is available.
-
-Write `SKILL_DIR/output/review.json` with this structure:
+Each per-file review uses this format:
 ```json
 {
-  "accepted": ["VIDEO_ID_A", "VIDEO_ID_B"],
+  "source": "candidates_people",
+  "candidates_reviewed": 18,
+  "accepted": [
+    {"id": "VIDEO_ID_A", "reason": "Sam Altman is the direct guest, 45-min interview on AI safety"}
+  ],
   "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"]
+}
+```
+`candidates_reviewed` must equal the total number of items across all chunk files for that category. The `reason` field is required for each accepted item — one sentence: who the speaker is, the format, and the key topic.
+
+**Step 4 — merge:** Combine all per-file reviews into `SKILL_DIR/output/review.json`:
+```json
+{
+  "accepted": [{"id": "VIDEO_ID_A", "reason": "..."}, {"id": "VIDEO_ID_B", "reason": "..."}],
+  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2", "VIDEO_ID_3"]
 }
 ```
 
@@ -130,6 +113,8 @@ For `description_zh`:
 **Important:** `output/accepted.json` must remain valid JSON. Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking the JSON string delimiters.
 
 **Phase 4 — commit accepted videos:**
+
+You MUST use `--commit-file` (not `--commit`). Only `--commit-file` publishes the enriched Chinese translations and cleaned descriptions you just wrote.
 ```bash
 python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/accepted.json
 ```
@@ -234,7 +219,7 @@ The fetch step can be scheduled unattended — `--fetch-candidates` only writes 
 2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Writes survivors to grouped candidate files plus `output/candidates.json`
 3. **Classification (you)**: Read `output/state.json` + the grouped candidate files; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items. Write decisions only to `output/review.json`
 4. **Accepted-item enrichment (you)**: Run `--prepare-accepted`, then add `description_clean`, `title_zh`, and `description_zh` only for accepted items
-4. **Commit** (`--commit ID ...`): Builds feeds with a rolling 30-day RSS window, updates `state.json`, sends a notification if configured
+4. **Commit** (`--commit-file accepted.json`): Builds feeds with a rolling 30-day RSS window, updates `state.json`, sends a notification if configured
 
 ## TrendRadar integration
 
@@ -257,8 +242,8 @@ rss:
 ## Files
 
 - `SKILL.md` — this file
-- `scripts/check_talks.py` — main script: `--fetch-candidates` writes grouped candidate files, `--prepare-accepted` writes accepted.json draft, `--commit`/`--commit-file` write RSS + state
-- `output/candidates_people.json` / `output/candidates_topics.json` / `output/candidates_channels.json` — auto-written by `--fetch-candidates`; preferred inputs for classification
+- `scripts/check_talks.py` — main script: `--fetch-candidates` writes grouped candidate files, `--prepare-accepted` writes accepted.json draft, `--commit-file` writes RSS + state
+- `output/candidates_people[_N].json` / `output/candidates_topics[_N].json` / `output/candidates_channels[_N].json` — auto-written by `--fetch-candidates` in chunks of ≤15 items each; inputs for classification
 - `output/review.json` — written by you during Phase 2 (accepted/rejected IDs only)
 - `output/accepted.json` — written by `--prepare-accepted`, then enriched by you during Phase 3; input to `--commit-file`
 - `config.yaml` — watchlist and settings (edit this to customize)
