@@ -14,11 +14,12 @@ AI Talks Monitor — review workflow:
   Phase 4 — --commit-file accepted.json:
     Publish accepted items, write RSS feeds, update state, notify subscribers.
 
-Outputs:
-  - candidates.json / candidates_people.json / candidates_topics.json / candidates_channels.json
-  - review.json
-  - accepted.json
-  - ai_talks.xml / ai_talks_zh.xml
+Persistent outputs (output/):
+  - state.json, ai_talks.xml, ai_talks_zh.xml
+
+Ephemeral outputs (output/scratch/ — wiped each --fetch-candidates run):
+  - candidates.json, candidates_people[_N].json, candidates_topics[_N].json, candidates_channels[_N].json
+  - review.json, review_{category}.json, enrichment.json, accepted.json
 """
 
 from __future__ import annotations
@@ -43,15 +44,16 @@ import yaml
 SKILL_DIR = Path(__file__).parent.parent
 CONFIG_FILE = SKILL_DIR / "config.yaml"
 OUTPUT_DIR = SKILL_DIR / "output"
+SCRATCH_DIR = OUTPUT_DIR / "scratch"
 STATE_FILE = OUTPUT_DIR / "state.json"
 RSS_FILE = OUTPUT_DIR / "ai_talks.xml"
 RSS_FILE_ZH = OUTPUT_DIR / "ai_talks_zh.xml"
-CANDIDATES_FILE = OUTPUT_DIR / "candidates.json"
-PEOPLE_CANDIDATES_FILE = OUTPUT_DIR / "candidates_people.json"
-TOPIC_CANDIDATES_FILE = OUTPUT_DIR / "candidates_topics.json"
-CHANNEL_CANDIDATES_FILE = OUTPUT_DIR / "candidates_channels.json"
-REVIEW_FILE = OUTPUT_DIR / "review.json"
-ACCEPTED_FILE = OUTPUT_DIR / "accepted.json"
+CANDIDATES_FILE = SCRATCH_DIR / "candidates.json"
+PEOPLE_CANDIDATES_FILE = SCRATCH_DIR / "candidates_people.json"
+TOPIC_CANDIDATES_FILE = SCRATCH_DIR / "candidates_topics.json"
+CHANNEL_CANDIDATES_FILE = SCRATCH_DIR / "candidates_channels.json"
+REVIEW_FILE = SCRATCH_DIR / "review.json"
+ACCEPTED_FILE = SCRATCH_DIR / "accepted.json"
 
 RSS_RETENTION_DAYS = 30
 YOUTUBE_SEARCH_SP_THIS_MONTH = "EgIIBA%253D%253D"
@@ -70,6 +72,7 @@ def load_config() -> dict:
 
 
 OUTPUT_DIR.mkdir(exist_ok=True)
+SCRATCH_DIR.mkdir(exist_ok=True)
 
 
 def load_state() -> dict:
@@ -844,6 +847,11 @@ def build_rss_zh(items: list[dict]) -> str:
 
 def cmd_fetch_candidates(args) -> None:
     """Search YouTube, apply heuristic filters, write grouped candidate files."""
+    # Wipe scratch dir to prevent stale files from previous runs.
+    if SCRATCH_DIR.exists():
+        shutil.rmtree(SCRATCH_DIR)
+    SCRATCH_DIR.mkdir(exist_ok=True)
+
     config = load_config()
     state = load_state()
     ytdlp_search_config = config.get("ytdlp_search", {})
@@ -936,9 +944,11 @@ def cmd_fetch_candidates(args) -> None:
             except (requests.exceptions.RequestException, RuntimeError) as e:
                 print(f"  Search error: {e}")
                 continue
-            topic_candidates.extend(
-                collect_candidates(videos, f"Topic: {topic_name}", seen_ids, topic_min)
-            )
+            new_candidates = collect_candidates(videos, f"Topic: {topic_name}", seen_ids, topic_min)
+            topic_org = topic.get("org", "")
+            for c in new_candidates:
+                c["org"] = topic_org
+            topic_candidates.extend(new_candidates)
             if resolved_search_backend == "yt_dlp":
                 time.sleep(ytdlp_delay)
 
@@ -996,26 +1006,26 @@ def cmd_fetch_candidates(args) -> None:
         desc = video.get("description", "")
         if len(desc) > max_desc:
             desc = desc[:max_desc] + "..."
-        return {
+        result = {
             "id": video["id"],
             "title": video.get("title", ""),
             "channel": video.get("channel", ""),
             "description": desc,
             "label": video.get("label", ""),
         }
+        if video.get("org"):
+            result["org"] = video["org"]
+        return result
 
     def _write_chunks(base_name: str, items: list[dict]) -> list[Path]:
         """Write items into chunk files; return list of paths written."""
-        # Clean up any previous chunk files for this category.
-        for old in OUTPUT_DIR.glob(f"{base_name}*.json"):
-            old.unlink()
         if not items:
             return []
         paths: list[Path] = []
         for i in range(0, len(items), CHUNK_SIZE):
             chunk = [_slim_for_review(v) for v in items[i : i + CHUNK_SIZE]]
             suffix = f"_{i // CHUNK_SIZE + 1}" if len(items) > CHUNK_SIZE else ""
-            path = OUTPUT_DIR / f"{base_name}{suffix}.json"
+            path = SCRATCH_DIR / f"{base_name}{suffix}.json"
             write_json(path, chunk)
             paths.append(path)
         return paths
@@ -1026,23 +1036,29 @@ def cmd_fetch_candidates(args) -> None:
 
     print(f"\n{len(all_candidates)} candidate(s) written:")
 
-    # Print classification read plan with exact file list.
+    # Print classification plan: one subagent per category.
     print("\n--- CLASSIFICATION PLAN ---")
-    print("Process each file ONE AT A TIME: read → classify all items → write review file → next file. DO NOT READ NEXT FILE UNTIL the review file of current file is written.\n")
-    file_step = 0
-    for label, files, items in [
+    print("Spawn up to 3 subagents (one per category) to classify in parallel.\n")
+    categories = [
         ("people", people_files, person_candidates),
         ("topics", topic_files, topic_candidates),
         ("channels", channel_files, channel_candidates),
-    ]:
+    ]
+    for label, files, items in categories:
         if not files:
             continue
+        print(f"  Subagent '{label}': {len(items)} items across {len(files)} file(s)")
         for path in files:
-            file_step += 1
             chunk_items = json.loads(path.read_text())
-            print(f"  Step {file_step}: Read {path.name} ({len(chunk_items)} items)")
-        print(f"    → After reading all {label} files above, write output/review_{label}.json\n")
-    print("After all review files are written, merge into output/review.json, then proceed to Phase 3.")
+            rel = path.relative_to(SKILL_DIR)
+            print(f"    - {rel} ({len(chunk_items)} items)")
+        print(f"    → write output/scratch/review_{label}.json\n")
+
+    print(f"Reference files to inline in each subagent task:")
+    print(f"  {SKILL_DIR / 'CLASSIFY.md'}")
+    print(f"  {STATE_FILE}")
+
+    print(f"\nAfter all subagents complete, merge review files into output/scratch/review.json, then run --prepare-accepted.")
     print("--- END CLASSIFICATION PLAN ---")
 
 
@@ -1099,6 +1115,72 @@ def cmd_prepare_accepted(args) -> None:
         f"Wrote accepted draft to {ACCEPTED_FILE}\n"
         f"  accepted: {len(draft['accepted'])}\n"
         f"  rejected: {len(draft['rejected'])}"
+    )
+
+
+ENRICHMENT_FILE = SCRATCH_DIR / "enrichment.json"
+
+
+def cmd_apply_enrichment(args) -> None:
+    """Merge enrichment.json into accepted.json, filling description_clean/title_zh/description_zh."""
+    enrichment_file = Path(args.apply_enrichment)
+    if not enrichment_file.exists():
+        print(f"File not found: {enrichment_file}")
+        return
+    if not ACCEPTED_FILE.exists():
+        print("No accepted.json found. Run --prepare-accepted first.")
+        return
+
+    accepted_data = json.loads(ACCEPTED_FILE.read_text())
+    enrichments = json.loads(enrichment_file.read_text())
+
+    # Build lookup by ID.
+    if isinstance(enrichments, list):
+        enrich_by_id = {e["id"]: e for e in enrichments}
+    elif isinstance(enrichments, dict) and "items" in enrichments:
+        enrich_by_id = {e["id"]: e for e in enrichments["items"]}
+    else:
+        print("Unexpected enrichment format. Expected a list or {items: [...]}.")
+        return
+
+    accepted_items = accepted_data.get("accepted", [])
+    accepted_ids = {item["id"] for item in accepted_items}
+
+    # Check all accepted items have enrichment.
+    missing = accepted_ids - set(enrich_by_id.keys())
+    if missing:
+        print(
+            f"ERROR: {len(missing)} accepted item(s) missing from enrichment file:\n"
+        )
+        for mid in sorted(missing):
+            title = next((a["title"] for a in accepted_items if a["id"] == mid), "?")
+            print(f"  {mid}: {title[:80]}")
+        print(f"\nAdd the missing items to {enrichment_file.name} and re-run.")
+        return
+
+    # Check required fields.
+    required_fields = ["description_clean", "title_zh", "description_zh"]
+    for item_id, enrich in enrich_by_id.items():
+        if item_id not in accepted_ids:
+            continue
+        empty = [f for f in required_fields if not enrich.get(f, "").strip()]
+        if empty:
+            print(f"ERROR: Item {item_id} missing fields: {', '.join(empty)}")
+            return
+
+    # Merge.
+    updated = 0
+    for item in accepted_items:
+        enrich = enrich_by_id.get(item["id"])
+        if enrich:
+            for field in required_fields:
+                item[field] = enrich[field]
+            updated += 1
+
+    write_json(ACCEPTED_FILE, accepted_data)
+    print(
+        f"Enrichment applied to {ACCEPTED_FILE}\n"
+        f"  {updated} item(s) updated with description_clean, title_zh, description_zh"
     )
 
 
@@ -1344,6 +1426,8 @@ def main() -> None:
                       help="Search YouTube, apply heuristic filter, write grouped candidate files")
     mode.add_argument("--prepare-accepted", metavar="FILE",
                       help="Read review.json (accepted/rejected IDs only) and write accepted.json draft")
+    mode.add_argument("--apply-enrichment", metavar="FILE",
+                      help="Merge enrichment.json into accepted.json (fills description_clean, title_zh, description_zh)")
     mode.add_argument("--commit-file", metavar="FILE",
                       help="Read accepted.json (draft/final) and write both English and Chinese RSS feeds")
     mode.add_argument("--commit", nargs="+", metavar="ID",
@@ -1355,6 +1439,8 @@ def main() -> None:
         cmd_fetch_candidates(args)
     elif args.prepare_accepted:
         cmd_prepare_accepted(args)
+    elif args.apply_enrichment:
+        cmd_apply_enrichment(args)
     elif args.commit_file:
         cmd_commit_file(args)
     else:

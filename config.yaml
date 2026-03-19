@@ -50,45 +50,31 @@ thought_leaders:
 
 # Optional: topic-based searches. Useful for catching talks from people you
 # don't know yet — engineers, researchers, and founders from trusted AI labs
-# who aren't on the person watchlist. Disabled by default because results are
-# broader and noisier than person-based searches.
+# who aren't on the person watchlist.
 #
-# require_org_confirmation: true — Claude accepts only if the title or
-# description confirms the speaker is affiliated with a trusted_org (see below).
-# This is the key filter that keeps lab-insider searches from being too noisy.
+# org: the organization this topic search targets. When set, Claude only accepts
+# a candidate if the speaker is confirmed to be from this specific org (not any
+# AI org — just this one). This prevents a "Meta AI Talks" search from accepting
+# an OpenAI researcher who happens to appear in the results.
 topics:
   enabled: true
   searches:
     - name: "Anthropic Talks"
       search_query: 'anthropic researcher talk podcast'
-      require_org_confirmation: true
+      org: "Anthropic"
       min_duration_minutes: 20
     - name: "OpenAI Talks"
       search_query: 'openai researcher talk podcast'
-      require_org_confirmation: true
+      org: "OpenAI"
       min_duration_minutes: 20
     - name: "Google DeepMind Talks"
       search_query: 'deepmind researcher talk podcast'
-      require_org_confirmation: true
+      org: "Google DeepMind"
       min_duration_minutes: 20
     - name: "Meta AI Talks"
       search_query: 'meta AI researcher talk podcast'
-      require_org_confirmation: true
+      org: "Meta AI"
       min_duration_minutes: 20
-
-# Trusted organizations for topic searches with require_org_confirmation: true.
-# Claude accepts a candidate only if the title or description confirms the speaker
-# is affiliated with one of these organizations.
-trusted_orgs:
-  - Anthropic
-  - OpenAI
-  - Google DeepMind
-  - Meta AI
-  - xAI
-  - Mistral
-  - Cohere
-  - Nvidia
-  - Microsoft Research
 
 # Channel watchlist. Monitors specific high-signal channels for any AI talk or interview.
 # Uses YouTube API (channel_id required) when YOUTUBE_API_KEY is set; falls back to yt-dlp (url).
@@ -108,6 +94,9 @@ channels:
     - name: "Y Combinator"
       channel_id: "UCcefcZRL2oaA_uBNeo5UOWg"
       url: "https://www.youtube.com/@ycombinator"
+    - name: "Zhang Xiaojun Podcast"
+      channel_id: "UC3Sv1JuKpbOx3csUO8FAo5g"
+      url: "https://www.youtube.com/@xiaojunpodcast"
 
 # Minimum video length in minutes. Videos shorter than this are skipped before
 # any API classification call. Raises this to cut more noise.

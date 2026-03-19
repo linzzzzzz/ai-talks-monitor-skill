@@ -50,34 +50,59 @@ python3 SKILL_DIR/scripts/check_talks.py --fetch-candidates
 ```
 Do NOT add `--lookback-days` unless the user explicitly asks to backfill a longer period. The default rolling window in `config.yaml` is correct for normal runs.
 
-**Phase 2 — classify candidates (your job):**
+**Phase 2 — classify candidates (subagent parallel):**
 
-First, read two reference files:
-- `SKILL_DIR/output/state.json` (if it exists) — load `items` for cross-run deduplication
-- `SKILL_DIR/CLASSIFY.md` — classification rules (read once, apply to every candidate)
+The `--fetch-candidates` output ends with a **CLASSIFICATION PLAN** listing candidate files grouped by category. Spawn up to 3 subagents in parallel — one each for people, topics, and channels.
 
-The `--fetch-candidates` output ends with a **CLASSIFICATION PLAN** listing the exact files to process. Follow that plan step by step:
+- **OpenClaw:** use `sessions_spawn` (with `runTimeoutSeconds: 300`)
+- **Claude Code:** use the `Agent` tool (with `model: "sonnet"`, `run_in_background: true`)
 
-**⚠️ DO NOT SKIP ANY FILE. You MUST read and classify EVERY file listed in the plan. `--prepare-accepted` will reject your review if any candidates are missing — you will have to redo the work. There are no shortcuts.**
+**Do NOT read any `candidates_*.json` files yourself.** The subagents will read them. You only need the reference files below.
 
-1. Read each file listed in the plan (each file is small enough for a single read — no pagination needed)
-2. Classify every candidate in that file using `CLASSIFY.md` rules
-3. After all files for a category (people/topics/channels), write the review file
+**Step 1 — read reference context.** Before spawning, read these files yourself so you can include their content in each subagent task:
+- `SKILL_DIR/CLASSIFY.md` — classification rules
+- `SKILL_DIR/output/state.json` (if it exists) — `items` array for cross-run deduplication
+- All ephemeral files (candidates, reviews, enrichment, accepted) live under `output/scratch/`, which is wiped at the start of each `--fetch-candidates` run.
+- `SKILL_DIR/config.yaml` is NOT needed — the `org` field is already baked into each topic candidate
 
-Each per-file review uses this format:
-```json
+**Step 2 — spawn one subagent per category.** For each category listed in the CLASSIFICATION PLAN, spawn a subagent with this task:
+
+```
+Classify AI talk candidates for the "{category}" category. Read ALL candidate files listed below, apply the classification rules, and write the review file.
+
+CANDIDATE FILES (read every file — each is ≤15 items):
+{list all chunk files for this category, e.g.:
+  - SKILL_DIR/output/scratch/candidates_topics_1.json
+  - SKILL_DIR/output/scratch/candidates_topics_2.json
+  - SKILL_DIR/output/scratch/candidates_topics_3.json
+  - SKILL_DIR/output/scratch/candidates_topics_4.json}
+
+REVIEW FILE: SKILL_DIR/output/scratch/review_{category}.json
+
+CLASSIFICATION RULES:
+{paste full CLASSIFY.md content here}
+
+STATE ITEMS (for deduplication):
+{paste state.json items array here, or "none" if empty}
+
+OUTPUT FORMAT — write the review file as valid JSON:
 {
-  "source": "candidates_people",
-  "candidates_reviewed": 18,
+  "source": "scratch/candidates_{category}",
+  "candidates_reviewed": <total items across ALL files above>,
   "accepted": [
-    {"id": "VIDEO_ID_A", "reason": "Sam Altman is the direct guest, 45-min interview on AI safety"}
+    {"id": "VIDEO_ID", "reason": "one sentence: who the speaker is, format, key topic"}
   ],
   "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"]
 }
-```
-`candidates_reviewed` must equal the total number of items across all chunk files for that category. The `reason` field is required for each accepted item — one sentence: who the speaker is, the format, and the key topic.
 
-**Step 4 — merge:** Combine all per-file reviews into `SKILL_DIR/output/review.json`:
+RULES:
+- Read ALL candidate files listed above. Do not skip any file.
+- Every candidate must appear in either accepted or rejected.
+- The "reason" field is required for each accepted item.
+- candidates_reviewed must equal the total items across all files.
+```
+
+**Step 3 — wait and merge.** After all subagents complete, read each `output/scratch/review_{category}.json` file and merge into `SKILL_DIR/output/scratch/review.json`:
 ```json
 {
   "accepted": [{"id": "VIDEO_ID_A", "reason": "..."}, {"id": "VIDEO_ID_B", "reason": "..."}],
@@ -89,34 +114,41 @@ IDs in neither `accepted` nor `rejected` are left unmarked in state and will rea
 
 **Phase 3 — prepare accepted items for enrichment:**
 ```bash
-python3 SKILL_DIR/scripts/check_talks.py --prepare-accepted SKILL_DIR/output/review.json
+python3 SKILL_DIR/scripts/check_talks.py --prepare-accepted SKILL_DIR/output/scratch/review.json
 ```
 
-This writes `SKILL_DIR/output/accepted.json` with only the accepted candidates plus their original metadata, so you can enrich just those items.
+This writes `SKILL_DIR/output/scratch/accepted.json` with only the accepted candidates plus their original metadata.
 
-For each accepted video in `output/accepted.json`, generate:
-- `description_clean`: a cleaned version of the available video description in its original language
-- `title_zh`: a concise Chinese translation of the title (not a literal word-for-word translation — make it natural and informative)
-- `description_zh`: a Chinese translation of `description_clean`, written for a Chinese-speaking audience
+Now read `output/scratch/accepted.json` and generate an enrichment file. For each accepted video, write **only** the generated fields to `SKILL_DIR/output/scratch/enrichment.json`:
+```json
+[
+  {
+    "id": "VIDEO_ID_A",
+    "description_clean": "...",
+    "title_zh": "...",
+    "description_zh": "..."
+  }
+]
+```
 
-For `description_clean`:
-- Base it only on the available metadata you actually have: title, channel, and video description
-- Do not pretend you watched the full video
-- Remove unhelpful links, sponsor boilerplate, social handles, and repetitive calls to action
-- Keep useful structure such as chapter/timestamp topic breakdowns when they help readers understand the talk
-- If the source description is sparse, write a short, conservative cleaned blurb in the original language rather than inventing details
+Field guidelines:
+- `description_clean`: a cleaned version of the video description in its original language. Base it only on available metadata (title, channel, description). Remove links, sponsor boilerplate, social handles, calls to action. Keep useful structure like chapter/timestamp breakdowns. If the source description is sparse, write a short conservative blurb rather than inventing details.
+- `title_zh`: a concise, natural Chinese translation of the title (not literal word-for-word)
+- `description_zh`: a Chinese translation of `description_clean`, written for a Chinese-speaking audience. Do not add information not present in the metadata.
 
-For `description_zh`:
-- Translate `description_clean` faithfully into natural Chinese
-- Do not add any information not present in the metadata
+**Important:** Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking JSON.
 
-**Important:** `output/accepted.json` must remain valid JSON. Use Chinese-style quotation marks `「」` instead of ASCII `"` inside Chinese text to avoid breaking the JSON string delimiters.
+Then apply the enrichment:
+```bash
+python3 SKILL_DIR/scripts/check_talks.py --apply-enrichment SKILL_DIR/output/scratch/enrichment.json
+```
+This merges your generated fields into `accepted.json`. It will reject the enrichment if any accepted items are missing or have empty fields.
 
 **Phase 4 — commit accepted videos:**
 
-You MUST use `--commit-file` (not `--commit`). Only `--commit-file` publishes the enriched Chinese translations and cleaned descriptions you just wrote.
+You MUST use `--commit-file` (not `--commit`). Only `--commit-file` publishes the enriched Chinese translations and cleaned descriptions.
 ```bash
-python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/accepted.json
+python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/scratch/accepted.json
 ```
 This writes both `ai_talks.xml` (English) and `ai_talks_zh.xml` (Chinese titles and translated descriptions), updates `state.json`, sends a notification if configured, and pushes to the feeds repo if `AI_TALKS_FEEDS_REPO` is set.
 
@@ -124,7 +156,7 @@ Note: `--commit-file` will refuse to publish any item missing a `published_at` d
 
 Use `--dry-run` to preview without writing files or updating state:
 ```bash
-python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/accepted.json --dry-run
+python3 SKILL_DIR/scripts/check_talks.py --commit-file SKILL_DIR/output/scratch/accepted.json --dry-run
 ```
 
 After committing, report what was accepted to the user.
@@ -216,10 +248,10 @@ The fetch step can be scheduled unattended — `--fetch-candidates` only writes 
 ## How it works
 
 1. **YouTube search** (`--fetch-candidates`): Runs three source types — person watchlist (keyword search via API/yt-dlp), channel watchlist (channel feed via API with `channelId` or yt-dlp with `@handle`), topic searches (keyword search). All use a rolling `lookback_days` window.
-2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Writes survivors to grouped candidate files plus `output/candidates.json`
-3. **Classification (you)**: Read `output/state.json` + the grouped candidate files; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items. Write decisions only to `output/review.json`
-4. **Accepted-item enrichment (you)**: Run `--prepare-accepted`, then add `description_clean`, `title_zh`, and `description_zh` only for accepted items
-4. **Commit** (`--commit-file accepted.json`): Builds feeds with a rolling 30-day RSS window, updates `state.json`, sends a notification if configured
+2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Wipes `output/scratch/`, then writes survivors to grouped candidate files there
+3. **Classification (you)**: Read `output/state.json` + the grouped candidate files in `output/scratch/`; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items. Write decisions to `output/scratch/review.json`
+4. **Accepted-item enrichment (you)**: Run `--prepare-accepted`, write `output/scratch/enrichment.json` with `description_clean`, `title_zh`, `description_zh`, then run `--apply-enrichment`
+5. **Commit** (`--commit-file accepted.json`): Builds feeds with a rolling 30-day RSS window, updates `state.json`, sends a notification if configured
 
 ## TrendRadar integration
 
@@ -242,11 +274,15 @@ rss:
 ## Files
 
 - `SKILL.md` — this file
-- `scripts/check_talks.py` — main script: `--fetch-candidates` writes grouped candidate files, `--prepare-accepted` writes accepted.json draft, `--commit-file` writes RSS + state
-- `output/candidates_people[_N].json` / `output/candidates_topics[_N].json` / `output/candidates_channels[_N].json` — auto-written by `--fetch-candidates` in chunks of ≤15 items each; inputs for classification
-- `output/review.json` — written by you during Phase 2 (accepted/rejected IDs only)
-- `output/accepted.json` — written by `--prepare-accepted`, then enriched by you during Phase 3; input to `--commit-file`
+- `scripts/check_talks.py` — main script: `--fetch-candidates`, `--prepare-accepted`, `--apply-enrichment`, `--commit-file`
 - `config.yaml` — watchlist and settings (edit this to customize)
-- `output/state.json` — auto-managed: seen video IDs, last_checked timestamp, rolling item list
-- `output/ai_talks.xml` — auto-generated RSS 2.0 feed (English)
-- `output/ai_talks_zh.xml` — auto-generated RSS 2.0 feed (Chinese titles and translated descriptions)
+- `output/state.json` — persistent: seen video IDs, last_checked timestamp, rolling item list
+- `output/ai_talks.xml` — persistent: auto-generated RSS 2.0 feed (English)
+- `output/ai_talks_zh.xml` — persistent: auto-generated RSS 2.0 feed (Chinese titles and translated descriptions)
+- `output/scratch/` — ephemeral per-run directory, wiped at the start of each `--fetch-candidates`:
+  - `candidates.json` — full candidate dump
+  - `candidates_people[_N].json` / `candidates_topics[_N].json` / `candidates_channels[_N].json` — chunked candidate files (≤15 items each)
+  - `review.json` — merged classification decisions
+  - `review_{category}.json` — per-subagent classification output
+  - `enrichment.json` — LLM-generated fields (description_clean, title_zh, description_zh)
+  - `accepted.json` — built by `--prepare-accepted`, enriched by `--apply-enrichment`, input to `--commit-file`
