@@ -14,6 +14,16 @@ The problem is their talks are scattered across dozens of YouTube channels, maki
 - **Content creators** — get first access to new interviews and talks
 - Or anyone who wants to learn English by watching original AI talks
 
+## What it covers
+
+| Category | Examples |
+|----------|----------|
+| 🏢 People | Sam Altman, Dario Amodei, Jensen Huang, Demis Hassabis, Yann LeCun, Fei-Fei Li, Andrew Ng, and more |
+| 🎙️ Channels | Zhang Xiaojun Podcast, Lex Fridman, Dwarkesh Patel, Y Combinator |
+| 🔬 Orgs | Talks and podcasts from researchers from OpenAI, Anthropic, Google DeepMind, NVIDIA AI, Meta AI |
+
+Fully customizable — add or remove people, channels, and orgs in `config.yaml`.
+
 ## Just subscribe (no setup needed)
 
 Don't want to run anything? Subscribe to the curated RSS feeds directly:
@@ -21,21 +31,11 @@ Don't want to run anything? Subscribe to the curated RSS feeds directly:
 - **English:** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
 - **Chinese:** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
 
-Use any RSS reader — [NetNewsWire](https://netnewswire.com/) (free, macOS/iOS), [Inoreader](https://www.inoreader.com/) (free, web), or any other.
+Use any RSS reader — [NetNewsWire](https://netnewswire.com/) (free, macOS/iOS), [Inoreader](https://www.inoreader.com/) (free, web), or any other. You can also add these feeds to [TrendRadar](https://github.com/sansan0/TrendRadar) to get AI talks in your daily trending briefings.
 
 ## Run it yourself
 
 Want to customize who you track? Run the skill with your own watchlist.
-
-### What it covers (default config)
-
-| Category | Examples |
-|----------|----------|
-| 🏢 People | Sam Altman, Dario Amodei, Jensen Huang, Demis Hassabis, Yann LeCun, Fei-Fei Li, Andrew Ng, and more |
-| 🎙️ Channels | Zhang Xiaojun Podcast, Lex Fridman, Dwarkesh Patel, Y Combinator |
-| 🔬 Orgs | OpenAI, Anthropic, Google DeepMind, NVIDIA AI, Meta AI talks |
-
-Fully customizable — add or remove people, channels, and orgs in `config.yaml`.
 
 ### How it works
 
@@ -157,6 +157,24 @@ notifications:
 **Linux (cron):**
 ```
 0 */4 * * * YOUTUBE_API_KEY=your_key python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates
+```
+
+### TrendRadar integration
+
+If you use [TrendRadar](https://github.com/sansan0/TrendRadar) for trending topics monitoring, you can add the AI talks feeds to your TrendRadar config to get AI talks included in your daily briefings:
+
+```yaml
+# In TrendRadar's config/config.yaml, under rss.feeds:
+- id: "ai-talks"
+  name: "AI Thought Leader Talks"
+  url: "file:///path/to/ai-talks-monitor/output/ai_talks.xml"
+  max_age_days: 30
+  enabled: true
+- id: "ai-talks-zh"
+  name: "AI大咖讲座精选"
+  url: "file:///path/to/ai-talks-monitor/output/ai_talks_zh.xml"
+  max_age_days: 30
+  enabled: true
 ```
 
 ## CLI reference

@@ -16,6 +16,16 @@
 - 📝 **内容创作者** — 需要第一时间跟踪最新访谈
 - 亦或者想边看访谈边学英语的同学，也可以一试
 
+## 默认覆盖范围
+
+| 类别 | 示例 |
+|------|------|
+| 🏢 人物 | Sam Altman、Dario Amodei、Jensen Huang、Demis Hassabis、Yann LeCun、李飞飞、吴恩达等 |
+| 🎙️ 频道 | 张小珺、Lex Fridman、Dwarkesh Patel、Y Combinator |
+| 🔬 机构 | OpenAI、Anthropic、Google DeepMind、NVIDIA AI、Meta AI 团队成员的采访和播客 |
+
+人物、频道、机构均可在 `config.yaml` 中自定义。
+
 ## 直接订阅（无需任何配置）
 
 不想折腾？直接订阅我的 RSS：
@@ -23,21 +33,11 @@
 - **英文版：** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
 - **中文版：** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
 
-推荐 RSS 阅读器：[NetNewsWire](https://netnewswire.com/)（免费，macOS/iOS）、[Inoreader](https://www.inoreader.com/)（免费，网页版）等。
+推荐 RSS 阅读器：[NetNewsWire](https://netnewswire.com/)（免费，macOS/iOS）、[Inoreader](https://www.inoreader.com/)（免费，网页版）等。也可以直接加到 [TrendRadar](https://github.com/sansan0/TrendRadar) 的 RSS 订阅源中，和你的每日热点简报一起推送。
 
 ## 自己部署
 
 想自定义追踪谁？用自己的配置跑起来。
-
-### 默认覆盖范围
-
-| 类别 | 示例 |
-|------|------|
-| 🏢 人物 | Sam Altman、Dario Amodei、Jensen Huang、Demis Hassabis、Yann LeCun、李飞飞、吴恩达等 |
-| 🎙️ 频道 | 张小珺、Lex Fridman、Dwarkesh Patel、Y Combinator |
-| 🔬 机构 | OpenAI、Anthropic、Google DeepMind、NVIDIA AI、Meta AI 相关演讲 |
-
-人物、频道、机构均可在 `config.yaml` 中自定义。
 
 ### 工作原理
 
@@ -159,6 +159,24 @@ notifications:
 **Linux (cron)：**
 ```
 0 */4 * * * YOUTUBE_API_KEY=your_key python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates
+```
+
+### TrendRadar 集成
+
+如果你在用 [TrendRadar](https://github.com/sansan0/TrendRadar) 做热点监控，可以把 AI 演讲 feed 加到 TrendRadar 配置中，让 AI 大咖访谈出现在你的每日简报里：
+
+```yaml
+# 在 TrendRadar 的 config/config.yaml 中，rss.feeds 下添加：
+- id: "ai-talks"
+  name: "AI Thought Leader Talks"
+  url: "file:///path/to/ai-talks-monitor/output/ai_talks.xml"
+  max_age_days: 30
+  enabled: true
+- id: "ai-talks-zh"
+  name: "AI大咖讲座精选"
+  url: "file:///path/to/ai-talks-monitor/output/ai_talks_zh.xml"
+  max_age_days: 30
+  enabled: true
 ```
 
 ## CLI 参考
