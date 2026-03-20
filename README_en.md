@@ -39,7 +39,7 @@ RSS reading experience<br>
 
 ## Just subscribe (no setup needed)
 
-Don't want to run anything? Subscribe to the curated RSS feeds directly:
+Don't want to run anything? Subscribe to the curated RSS feeds directly. Updated daily around 10:10 AM Beijing time (UTC+8):
 
 - **English:** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
 - **Chinese:** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
@@ -143,16 +143,6 @@ orgs:
       search_query: '"Your Org" researcher talk podcast'
       org: "Organization Name"
 ```
-
-### Serving feeds via GitHub Pages
-
-```bash
-mkdir ~/feeds && cd ~/feeds
-git init && git remote add origin https://github.com/YOURNAME/feeds
-# Enable Pages in repo Settings → Pages → Deploy from main branch
-```
-
-Set `AI_TALKS_FEEDS_REPO=~/feeds` and feeds auto-publish after each run.
 
 ### Notifications
 

@@ -41,7 +41,7 @@ RSS 阅读效果<br>
 
 ## 直接订阅（无需任何配置）
 
-不想折腾？直接订阅我的 RSS：
+不想折腾？直接订阅我的 RSS，每天北京时间 10:10 左右更新：
 
 - **英文版：** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
 - **中文版：** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
@@ -145,16 +145,6 @@ orgs:
       search_query: '"你的机构" researcher talk podcast'
       org: "机构名称"
 ```
-
-### 通过 GitHub Pages 发布 feed
-
-```bash
-mkdir ~/feeds && cd ~/feeds
-git init && git remote add origin https://github.com/YOURNAME/feeds
-# 在仓库 Settings → Pages → Deploy from main branch 启用 Pages
-```
-
-设置 `AI_TALKS_FEEDS_REPO=~/feeds`，每次运行后自动发布。
 
 ### 通知配置
 
