@@ -997,6 +997,22 @@ def cmd_fetch_candidates(args) -> None:
         else:
             print(f"Unknown backends.metadata value: {resolved_metadata_backend}")
 
+    # Post-enrichment date filter: yt-dlp flat search may return videos without
+    # dates that slip through the initial cutoff. After metadata enrichment fills
+    # in exact dates, re-apply the cutoff to remove stale videos.
+    cutoff_date = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
+    before_count = len(all_candidates)
+    all_candidates = [
+        c for c in all_candidates
+        if not c.get("published_at")
+        or datetime.fromisoformat(c["published_at"].replace("Z", "+00:00")).date() >= cutoff_date
+    ]
+    person_candidates = [c for c in all_candidates if is_person_label(c.get("label", ""))]
+    org_candidates = [c for c in all_candidates if c.get("label", "").startswith("Org: ")]
+    channel_candidates = [c for c in all_candidates if c.get("label", "").startswith("Channel: ")]
+    if before_count != len(all_candidates):
+        print(f"  Post-enrichment date filter removed {before_count - len(all_candidates)} stale candidate(s)")
+
     write_json(CANDIDATES_FILE, all_candidates)
 
     # Split each category into chunk files of max CHUNK_SIZE items so
@@ -1077,6 +1093,7 @@ def cmd_prepare_accepted(args) -> None:
     review = json.loads(review_file.read_text())
     raw_accepted = review.get("accepted", []) if isinstance(review, dict) else []
     rejected_ids = review.get("rejected", []) if isinstance(review, dict) else []
+    uncertain_ids = review.get("uncertain", []) if isinstance(review, dict) else []
 
     # Normalise: support both new [{id, reason}] format and legacy ["ID"] format.
     accepted_entries = [
@@ -1084,8 +1101,8 @@ def cmd_prepare_accepted(args) -> None:
         for entry in raw_accepted
     ]
 
-    if not accepted_entries and not rejected_ids:
-        print("No accepted or rejected IDs found in review file.")
+    if not accepted_entries and not rejected_ids and not uncertain_ids:
+        print("No accepted, rejected, or uncertain IDs found in review file.")
         return
 
     candidates = json.loads(CANDIDATES_FILE.read_text())
@@ -1093,13 +1110,13 @@ def cmd_prepare_accepted(args) -> None:
     # --- Coverage check: every candidate must be accounted for ---
     reviewed_ids = {
         (e["id"] if isinstance(e, dict) else e) for e in raw_accepted
-    } | set(rejected_ids)
+    } | set(rejected_ids) | set(uncertain_ids)
     candidate_ids = {c["id"] for c in candidates}
     missing = candidate_ids - reviewed_ids
     if missing:
         print(
             f"ERROR: {len(missing)} candidate(s) not classified. "
-            f"Every candidate must appear in accepted or rejected.\n"
+            f"Every candidate must appear in accepted, rejected, or uncertain.\n"
             f"Missing IDs:\n"
         )
         for mid in sorted(missing):
@@ -1113,11 +1130,14 @@ def cmd_prepare_accepted(args) -> None:
 
     draft = build_accepted_draft(candidates, accepted_entries, rejected_ids)
     write_json(ACCEPTED_FILE, draft)
-    print(
+    summary = (
         f"Wrote accepted draft to {ACCEPTED_FILE}\n"
         f"  accepted: {len(draft['accepted'])}\n"
         f"  rejected: {len(draft['rejected'])}"
     )
+    if uncertain_ids:
+        summary += f"\n  uncertain: {len(uncertain_ids)} (will resurface next run)"
+    print(summary)
 
 
 ENRICHMENT_FILE = SCRATCH_DIR / "enrichment.json"

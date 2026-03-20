@@ -92,25 +92,28 @@ OUTPUT FORMAT — write the review file as valid JSON:
   "accepted": [
     {"id": "VIDEO_ID", "reason": "one sentence: why this meets the acceptance criteria (e.g. which person is confirmed as speaker, or which org affiliation was verified)"}
   ],
-  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"]
+  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"],
+  "uncertain": ["VIDEO_ID_3"]
 }
 
 RULES:
 - Read ALL candidate files listed above. Do not skip any file.
-- Every candidate must appear in either accepted or rejected.
+- Every candidate must appear in accepted, rejected, or uncertain.
 - The "reason" field is required for each accepted item.
 - candidates_reviewed must equal the total items across all files.
+- Use "uncertain" for candidates with insufficient information (empty description, ambiguous title). These will NOT be written to state.json and will resurface on the next run.
 ```
 
 **Step 3 — wait and merge.** After all subagents complete, read each `output/scratch/review_{category}.json` file and merge into `SKILL_DIR/output/scratch/review.json`:
 ```json
 {
   "accepted": [{"id": "VIDEO_ID_A", "reason": "..."}, {"id": "VIDEO_ID_B", "reason": "..."}],
-  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2", "VIDEO_ID_3"]
+  "rejected": ["VIDEO_ID_1", "VIDEO_ID_2", "VIDEO_ID_3"],
+  "uncertain": ["VIDEO_ID_4"]
 }
 ```
 
-IDs in neither `accepted` nor `rejected` are left unmarked in state and will reappear on the next run.
+IDs in `uncertain` are left unmarked in state and will reappear on the next run.
 
 **Phase 3 — prepare accepted items for enrichment:**
 ```bash

@@ -46,4 +46,4 @@ Each candidate goes into one of three buckets:
   - *Channel watchlist*: the video is a genuine AI talk or interview from the curated channel.
   - *Re-uploads*: when multiple candidates cover the same event, prefer the original/official channel. However, if no original-channel version exists among the candidates, accept the best available re-upload (longest duration, most complete).
 - **Reject**: clearly derivative, duplicate, or confirmed irrelevant. Enough information to be certain.
-- **Uncertain**: not enough information (empty description, ambiguous title). Leave out of both accepted and rejected — it will resurface next run.
+- **Uncertain**: not enough information (empty description, ambiguous title). Place in the `uncertain` list — these IDs won't be written to `state.json`, so they will resurface on the next run.

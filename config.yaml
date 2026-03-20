@@ -9,44 +9,46 @@
 #       search_query: '"李飞飞" 访谈'
 thought_leaders:
   # OpenAI
-  - name: "Sam Altman"
+  - name: "Sam Altman"          # CEO, OpenAI
     search_query: '"Sam Altman" interview'
-  - name: "Greg Brockman"
+  - name: "Greg Brockman"       # Co-founder, OpenAI
     search_query: '"Greg Brockman" interview'
   # Anthropic
-  - name: "Dario Amodei"
+  - name: "Dario Amodei"        # CEO, Anthropic
     search_query: '"Dario Amodei" interview'
-  - name: "Amanda Askell"
+  - name: "Amanda Askell"       # Character lead, Anthropic
     search_query: '"Amanda Askell" interview'
   # Google DeepMind
-  - name: "Demis Hassabis"
+  - name: "Demis Hassabis"      # CEO, Google DeepMind
     search_query: '"Demis Hassabis" interview'
-  - name: "Jeff Dean"
+  - name: "Jeff Dean"           # Chief Scientist, Google
     search_query: '"Jeff Dean" interview'
   # Meta AI
-  - name: "Yann LeCun"
+  - name: "Yann LeCun"          # Chief AI Scientist, Meta
     search_query: '"Yann LeCun" interview'
   # Researchers / academics
-  - name: "Geoffrey Hinton"
+  - name: "Geoffrey Hinton"     # Godfather of deep learning, Turing Award
     search_query: '"Geoffrey Hinton" interview'
-  - name: "Yoshua Bengio"
+  - name: "Yoshua Bengio"       # Deep learning pioneer, Turing Award
     search_query: '"Yoshua Bengio" interview'
-  - name: "Fei-Fei Li"
+  - name: "Fei-Fei Li"          # Stanford HAI co-director, ImageNet creator
     search_query: '"Fei-Fei Li" interview'
-  - name: "Andrej Karpathy"
+  - name: "Andrej Karpathy"     # Ex-Tesla AI / OpenAI, educator
     search_query: '"Andrej Karpathy" interview'
-  - name: "Andrew Ng"
+  - name: "Andrew Ng"           # DeepLearning.AI founder, Stanford professor
     search_query: '"Andrew Ng" interview'
   # Other labs / founders
-  - name: "Ilya Sutskever"
+  - name: "Ilya Sutskever"      # Co-founder, Safe Superintelligence Inc.
     search_query: '"Ilya Sutskever" interview'
-  - name: "Aidan Gomez"
+  - name: "Aidan Gomez"         # CEO, Cohere
     search_query: '"Aidan Gomez" interview'
   # Industry
-  - name: "Jensen Huang"
+  - name: "Jensen Huang"        # CEO, NVIDIA
     search_query: '"Jensen Huang" interview'
-  - name: "Satya Nadella"
+  - name: "Satya Nadella"       # CEO, Microsoft
     search_query: '"Satya Nadella" AI interview'
+  - name: "Peter Steinberger"   # Creator of OpenClaw
+    search_query: '"Peter Steinberger" interview'
 
 # Org-based searches. Useful for catching talks from people you don't know yet
 # — engineers, researchers, and founders from specific AI labs who aren't on the

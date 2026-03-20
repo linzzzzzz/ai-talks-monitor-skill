@@ -1,12 +1,4 @@
-output/state.json
-output/candidates.json
-output/candidates_people.json
-output/candidates_topics.json
-output/candidates_channels.json
-output/review.json
-output/accepted.json
-output/ai_talks.xml
-output/ai_talks_zh.xml
+output/
 __pycache__/
 *.pyc
 .DS_Store
