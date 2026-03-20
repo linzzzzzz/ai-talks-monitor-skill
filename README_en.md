@@ -50,18 +50,24 @@ YouTube search → heuristic pre-filter → LLM classification → enrichment �
 
 Runs every few hours automatically. The fetch step is safe to schedule unattended.
 
+### Prerequisites
+
+- **An LLM agent** — [OpenClaw](https://openclaw.com) (tested with MiniMax 2.5 and 2.7) or [Claude Code](https://claude.com/claude-code). The classification step (Step 2) uses an LLM agent to review candidates — this skill is not a standalone CLI tool.
+- **YouTube Data API v3 key** — [get one free](https://console.cloud.google.com). The default config uses yt-dlp for search (no key needed) but the YouTube API for metadata enrichment. Without a key, metadata falls back to yt-dlp, which frequently triggers YouTube bot-detection, leading to incomplete data and failed feed generation.
+- **Python 3.9+**
+
 ### Installation
 
 **1. Install as a skill**
 
-For Claude Code:
-```bash
-git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.claude/skills/ai-talks-monitor
-```
-
 For OpenClaw:
 ```bash
 git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.agents/skills/ai-talks-monitor
+```
+
+For Claude Code:
+```bash
+git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.claude/skills/ai-talks-monitor
 ```
 
 **2. Install dependencies**
@@ -74,7 +80,7 @@ pip install requests pyyaml yt-dlp
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `YOUTUBE_API_KEY` | Recommended | YouTube Data API v3 key ([get one free](https://console.cloud.google.com)) |
+| `YOUTUBE_API_KEY` | **Yes** | YouTube Data API v3 key ([get one free](https://console.cloud.google.com)). The default config uses yt-dlp for search (which works fine without a key) but the YouTube API for metadata enrichment — this hybrid approach saves API quota on discovery while still getting reliable metadata (publish dates, full descriptions). Without a key, metadata also falls back to yt-dlp, which frequently triggers YouTube bot-detection, leading to incomplete data and failed feed generation. |
 | `AI_TALKS_FEEDS_REPO` | No | Path to a local git repo for auto-publishing feeds to GitHub Pages |
 | `TELEGRAM_BOT_TOKEN` | No | For native Telegram notifications |
 | `TELEGRAM_CHAT_ID` | No | Telegram chat/channel ID |

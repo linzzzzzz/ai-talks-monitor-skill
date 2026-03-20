@@ -52,18 +52,24 @@ YouTube 搜索 → 启发式预过滤 → LLM 分类 → 翻译enrichment → RS
 
 每隔几小时自动跑一次。搜索步骤可以安全地无人值守调度。
 
+### 前置条件
+
+- **LLM Agent** — 需要 [OpenClaw](https://openclaw.com)（已在 MiniMax 2.5 和 2.7 下测试通过）或 [Claude Code](https://claude.com/claude-code)。分类步骤（第二步）由 LLM Agent 完成，本 Skill 不能作为独立 CLI 工具使用。
+- **YouTube Data API v3 密钥** — [免费获取](https://console.cloud.google.com)。默认配置用 yt-dlp 做搜索（不需要 key），用 YouTube API 做元数据补全。没有 API Key 时元数据回退到 yt-dlp，经常触发机器人检测，导致数据不完整、feed 生成失败。
+- **Python 3.9+**
+
 ### 安装
 
 **1. 安装为 Skill**
 
-Claude Code：
-```bash
-git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.claude/skills/ai-talks-monitor
-```
-
 OpenClaw：
 ```bash
 git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.agents/skills/ai-talks-monitor
+```
+
+Claude Code：
+```bash
+git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.claude/skills/ai-talks-monitor
 ```
 
 **2. 安装依赖**
@@ -76,7 +82,7 @@ pip install requests pyyaml yt-dlp
 
 | 变量 | 是否必须 | 用途 |
 |------|----------|------|
-| `YOUTUBE_API_KEY` | 推荐 | YouTube Data API v3 密钥（[免费获取](https://console.cloud.google.com)） |
+| `YOUTUBE_API_KEY` | **必须** | YouTube Data API v3 密钥（[免费获取](https://console.cloud.google.com)）。默认配置用 yt-dlp 做搜索（不需要 key），用 YouTube API 做元数据补全——这种混合模式既省 API 配额又能拿到可靠的元数据（发布日期、完整描述）。如果没有 API Key，元数据也会回退到 yt-dlp，而 yt-dlp 经常触发 YouTube 的机器人检测，导致数据不完整、feed 生成失败。 |
 | `AI_TALKS_FEEDS_REPO` | 否 | 本地 git 仓库路径，用于自动发布 feed 到 GitHub Pages |
 | `TELEGRAM_BOT_TOKEN` | 否 | Telegram 通知 |
 | `TELEGRAM_CHAT_ID` | 否 | Telegram 聊天/频道 ID |
