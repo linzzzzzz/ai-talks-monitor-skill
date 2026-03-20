@@ -35,7 +35,7 @@ Supports three modes:
 
 2. Install Python dependencies:
    ```
-   pip install requests pyyaml
+   pip install requests pyyaml yt-dlp
    ```
 
 ## Usage
