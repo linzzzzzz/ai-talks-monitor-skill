@@ -48,15 +48,15 @@ thought_leaders:
   - name: "Satya Nadella"
     search_query: '"Satya Nadella" AI interview'
 
-# Optional: topic-based searches. Useful for catching talks from people you
-# don't know yet — engineers, researchers, and founders from trusted AI labs
-# who aren't on the person watchlist.
+# Org-based searches. Useful for catching talks from people you don't know yet
+# — engineers, researchers, and founders from specific AI labs who aren't on the
+# person watchlist.
 #
-# org: the organization this topic search targets. When set, Claude only accepts
-# a candidate if the speaker is confirmed to be from this specific org (not any
-# AI org — just this one). This prevents a "Meta AI Talks" search from accepting
-# an OpenAI researcher who happens to appear in the results.
-topics:
+# org: the organization this search targets. Claude only accepts a candidate if
+# the speaker is confirmed to be from this specific org (not any AI org — just
+# this one). This prevents a "Meta AI Talks" search from accepting an OpenAI
+# researcher who happens to appear in the results.
+orgs:
   enabled: true
   searches:
     - name: "Anthropic Talks"

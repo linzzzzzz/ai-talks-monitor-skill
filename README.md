@@ -1,324 +1,181 @@
 # AI Talks Monitor
 
-A Claude Code skill that watches YouTube for new long-form original talks and interviews featuring AI thought leaders, then delivers them as RSS feeds in English and Chinese.
+[English](README_en.md)
 
-**Live example feeds:**
-- English: [linzzzzzz.github.io/feeds/ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
-- Chinese: [linzzzzzz.github.io/feeds/ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
+一个 Agent Skill，自动从 YouTube 上追踪顶尖 AI 大咖的一手演讲和访谈，过滤噪音，输出中英双语 RSS 订阅源。
 
----
+## 为什么做这个
 
-## The problem
+现在 AI 相关的内容太多了，各种反应视频、总结、热评，真正有干货的不多。最有价值但被低估的信息源是什么？直接听当事人怎么说——OpenAI、Anthropic、DeepMind、NVIDIA、Meta AI 这些顶尖 AI 公司核心人物的一手演讲和访谈。
 
-YouTube surfaces endless reactions, summaries, and explainers about AI leaders — but buries the original source material. Finding a new Sam Altman interview means scrolling past dozens of videos *about* the interview.
+但这些人的内容散落在 YouTube 各个频道，手动追踪几乎不可能。这个 Skill 用 AI Agent 自动搜索、筛选、翻译，帮你省掉这些功夫。
 
-This tool solves that. It searches YouTube, applies heuristic filters, then lets Claude classify the survivors — keeping only genuine first-person talks and interviews. For each accepted talk, Claude also generates a Chinese title and summary, making the feed useful to a bilingual audience.
+## 适合谁
 
-## How it works
+- 🔥 **AI 狂热者** — 闲暇时间喜欢听大佬访谈播客
+- 📝 **内容创作者** — 需要第一时间跟踪最新访谈
+- 亦或者想边看访谈边学英语的同学，也可以一试
+
+## 直接订阅（无需任何配置）
+
+不想折腾？直接订阅我的 RSS：
+
+- **英文版：** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
+- **中文版：** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
+
+推荐 RSS 阅读器：[NetNewsWire](https://netnewswire.com/)（免费，macOS/iOS）、[Inoreader](https://www.inoreader.com/)（免费，网页版）等。
+
+## 自己部署
+
+想自定义追踪谁？用自己的配置跑起来。
+
+### 默认覆盖范围
+
+| 类别 | 示例 |
+|------|------|
+| 🏢 人物 | Sam Altman、Dario Amodei、Jensen Huang、Demis Hassabis、Yann LeCun、李飞飞、吴恩达等 |
+| 🎙️ 频道 | 张小珺、Lex Fridman、Dwarkesh Patel、Y Combinator |
+| 🔬 机构 | OpenAI、Anthropic、Google DeepMind、NVIDIA AI、Meta AI 相关演讲 |
+
+人物、频道、机构均可在 `config.yaml` 中自定义。
+
+### 工作原理
 
 ```
-config.yaml
-    │
-    ▼
-YouTube search (API key or yt-dlp fallback)
-    │
-    ▼
-Heuristic pre-filter  ← rejects "reaction", "summary", "breakdown", CJK equivalents, etc.
-    │
-    ▼
-output/candidates_people.json / output/candidates_topics.json / output/candidates_channels.json  ← review in smaller batches
-    │
-    ▼
-output/review.json  ← agent writes: accepted/rejected IDs only
-    │
-    ▼
---prepare-accepted output/review.json
-    │
-    ▼
-output/accepted.json  ← script writes accepted-item draft; agent enriches only those items
-    │
-    ▼
---commit-file output/accepted.json
-    │
-    ▼
-output/ai_talks.xml (English) + output/ai_talks_zh.xml (Chinese)  +  optional notification (Telegram or OpenClaw)
+YouTube 搜索 → 启发式预过滤 → LLM 分类 → 翻译enrichment → RSS 输出
 ```
 
-The workflow is split into phases so the fetch step can run unattended on a schedule, and the agent only enters the loop for classification and accepted-item enrichment.
+1. **搜索** — 按 watchlist 搜索 YouTube，过滤反应视频、总结、剪辑
+2. **分类** — LLM 子代理按类别审核，只保留真正的一手演讲和访谈
+3. **翻译** — 为通过的内容生成中文标题和摘要
+4. **发布** — 生成 RSS 订阅源，更新状态，推送通知（Telegram/飞书）
 
-## Installation
+每隔几小时自动跑一次。搜索步骤可以安全地无人值守调度。
 
-### 1. Install as a Claude Code skill
+### 安装
+
+**1. 安装为 Skill**
+
+Claude Code：
+```bash
+git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.claude/skills/ai-talks-monitor
+```
+
+OpenClaw：
+```bash
+git clone https://github.com/linzzzzzz/ai-talks-monitor-skill ~/.agents/skills/ai-talks-monitor
+```
+
+**2. 安装依赖**
 
 ```bash
-cp -r ai-talks-monitor ~/.claude/skills/ai-talks-monitor
+pip install requests pyyaml yt-dlp
 ```
 
-Or clone directly:
+**3. 设置环境变量**
+
+| 变量 | 是否必须 | 用途 |
+|------|----------|------|
+| `YOUTUBE_API_KEY` | 推荐 | YouTube Data API v3 密钥（[免费获取](https://console.cloud.google.com)） |
+| `AI_TALKS_FEEDS_REPO` | 否 | 本地 git 仓库路径，用于自动发布 feed 到 GitHub Pages |
+| `TELEGRAM_BOT_TOKEN` | 否 | Telegram 通知 |
+| `TELEGRAM_CHAT_ID` | 否 | Telegram 聊天/频道 ID |
+
+**4. 运行**
+
+直接告诉你的 Agent：
+
+> "帮我查一下最新的 AI 演讲"
+
+或手动执行：
 
 ```bash
-git clone https://github.com/linzzzzzz/ai-talks-monitor ~/.claude/skills/ai-talks-monitor
+# 第一步：搜索候选
+python3 scripts/check_talks.py --fetch-candidates
+
+# 第二步：分类（由 Agent 通过 SKILL.md 完成）
+
+# 第三步：准备已接受内容
+python3 scripts/check_talks.py --prepare-accepted output/scratch/review.json
+
+# 第四步：提交到 feed
+python3 scripts/check_talks.py --commit-file output/scratch/accepted.json
 ```
 
-### 2. Install Python dependencies
+首次运行建议加 `--lookback-days 30` 搜索更长时间范围。
 
-```bash
-pip install requests pyyaml
-```
+### 自定义配置
 
-### 3. Set environment variables
-
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `YOUTUBE_API_KEY` | Recommended | YouTube Data API v3. Free — get one from [Google Cloud Console](https://console.cloud.google.com). Used for API search and/or low-cost `videos.list` metadata enrichment. |
-| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token. Only needed when `notifications.backend: "native"`. |
-| `TELEGRAM_CHAT_ID` | No | Telegram chat or channel ID. Optional when `notifications.backend: "native"` if you instead set `notifications.native.target` in config. |
-| `AI_TALKS_FEEDS_REPO` | No | Absolute path to a local git repo (e.g. `~/feeds`). If set, both `ai_talks.xml` and `ai_talks_zh.xml` are copied there and pushed automatically after each commit — keeping a GitHub Pages feed up to date. |
-
-If you already run OpenClaw and want to reuse its Telegram or Feishu channels, set `notifications.backend: "openclaw"` in `config.yaml` and configure `notifications.openclaw.channel/target` instead of using the raw Telegram env vars.
-
-**yt-dlp fallback / hybrid mode:** The script can use [yt-dlp](https://github.com/yt-dlp/yt-dlp) for search discovery and either yt-dlp or the YouTube Data API for metadata enrichment. Install it with `pip install yt-dlp`. To avoid yt-dlp bot-checks on per-video metadata fetches, set `backends.search: yt_dlp` and `backends.metadata: youtube_api` in `config.yaml` when `YOUTUBE_API_KEY` is available.
-
-## Quick start
-
-**Step 1 — fetch candidates:**
-
-```bash
-python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates
-```
-
-On first run, add `--lookback-days 30` to search further back:
-
-```bash
-python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates --lookback-days 30
-```
-
-**Step 2 — classify only:**
-
-Invoke the skill and review the grouped candidate files. Write `output/review.json` with accepted/rejected IDs only.
-
-**Step 3 — prepare accepted items:**
-
-```bash
-python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --prepare-accepted ~/.claude/skills/ai-talks-monitor/output/review.json
-```
-
-Then enrich only the accepted items in `output/accepted.json` with `description_clean`, `title_zh`, and `description_zh`.
-
-**Step 4 — commit:**
-
-```bash
-python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --commit-file ~/.claude/skills/ai-talks-monitor/output/accepted.json
-```
-
-This writes both `output/ai_talks.xml` (English) and `output/ai_talks_zh.xml` (Chinese), updates `output/state.json`, and sends a notification if configured.
-
-## Using with Claude Code
-
-Once installed as a skill, interact conversationally:
-
-> "Check for new AI talks"
-
-> "Add Demis Hassabis to the watchlist"
-
-> "Show me who's being monitored"
-
-The agent handles the full workflow: fetching, classifying, enriching accepted items, and committing — guided by the instructions in `SKILL.md`.
-
-## Configuration
-
-Edit `config.yaml` to customize the watchlist and settings:
+编辑 `config.yaml`：
 
 ```yaml
-backends:
-  search: yt_dlp        # use yt-dlp for candidate discovery
-  metadata: youtube_api # use videos.list for exact descriptions/dates when API key exists
-
 thought_leaders:
   - name: "Sam Altman"
     search_query: '"Sam Altman" interview'
-  - name: "Yann LeCun"
-    search_query: '"Yann LeCun" interview'
+  - name: "你想追踪的人"
+    search_query: '"你想追踪的人" interview OR talk'
 
-# Optional topic searches (disabled by default — noisier than person searches)
-topics:
-  enabled: false
+channels:
+  - name: "你的频道"
+    channel_url: "https://www.youtube.com/@yourchannel"
+
+orgs:
+  enabled: true
   searches:
-    - name: "AI Safety"
-      search_query: '"AI safety" interview OR talk OR podcast'
-      min_duration_minutes: 30
-
-min_duration_minutes: 20  # skip videos shorter than this
-lookback_days: 7          # rolling search window in days
-ytdlp_search:
-  use_this_month_filter: true
+    - name: "你的机构"
+      search_query: '"你的机构" researcher talk podcast'
+      org: "机构名称"
 ```
 
-Notification delivery is configured separately:
-
-```yaml
-notifications:
-  backend: "openclaw"   # "native", "openclaw", or "none"
-  language: "zh"        # or "original" — controls titles used in chat notifications
-  include_excerpt: true # add one short description line per item
-  native:
-    channel: "telegram"
-    target: "123456789"  # Telegram chat ID for built-in Telegram delivery
-  openclaw:
-    binary: "openclaw"
-    channel: "telegram"  # or "feishu"
-    target: "123456789"  # Telegram chat ID, @username, or Feishu target like feishu:group:oc_xxx
-    account: ""          # optional OpenClaw account id
-```
-
-Set `notifications.language: "zh"` if you want chat notifications to prefer `title_zh` when available.
-Set `notifications.include_excerpt: true` if you want each chat notification item to include one short description line in addition to title, source, duration, and link.
-
-Use `backend: "native"` for the built-in Telegram sender, `backend: "openclaw"` to route through OpenClaw (Telegram or Feishu), or `backend: "none"` to disable notifications.
-
-**Person watchlist:** Each person gets an exact YouTube search. Claude verifies the person is an actual participant, not just the subject of a reaction or news video.
-
-**Topic searches:** Broader and noisier. Useful for catching talks from people you don't know yet, or conference keynotes. A higher `min_duration_minutes` helps cut noise.
-
-**Bilingual subjects:** Add a second entry with the native name:
-```yaml
-- name: "Fei-Fei Li (Chinese)"
-  search_query: '"李飞飞" 访谈'
-```
-
-## RSS feeds
-
-Each commit produces two standard RSS 2.0 files with a rolling 30-day window:
-
-| Feed | File | Contents |
-|------|------|----------|
-| English | `output/ai_talks.xml` | Original titles and descriptions |
-| Chinese | `output/ai_talks_zh.xml` | Claude-translated titles and cleaned descriptions |
-
-### Serving via GitHub Pages
+### 通过 GitHub Pages 发布 feed
 
 ```bash
 mkdir ~/feeds && cd ~/feeds
 git init && git remote add origin https://github.com/YOURNAME/feeds
-cp /path/to/output/ai_talks.xml /path/to/output/ai_talks_zh.xml .
-git add ai_talks.xml ai_talks_zh.xml && git commit -m "feed"
-git push -u origin main
-# Enable Pages in repo Settings → Pages → Deploy from main branch
+# 在仓库 Settings → Pages → Deploy from main branch 启用 Pages
 ```
 
-Your feeds will be live at:
-- `https://YOURNAME.github.io/feeds/ai_talks.xml`
-- `https://YOURNAME.github.io/feeds/ai_talks_zh.xml`
+设置 `AI_TALKS_FEEDS_REPO=~/feeds`，每次运行后自动发布。
 
-Set `AI_TALKS_FEEDS_REPO=~/feeds` to push automatically after each commit.
-
-### Using with TrendRadar
-
-[TrendRadar](https://github.com/linzzzzzz/trendradar) is an RSS aggregator and trend analysis tool. AI Talks Monitor integrates with it directly.
-
-**Option A — local file URL** (if TrendRadar runs on the same machine):
+### 通知配置
 
 ```yaml
-# In TrendRadar's config/config.yaml
-rss:
-  feeds:
-    - id: "ai-talks"
-      name: "AI Thought Leader Talks"
-      url: "file:///Users/YOU/.claude/skills/ai-talks-monitor/output/ai_talks.xml"
-      max_age_days: 30
-      enabled: true
-    - id: "ai-talks-zh"
-      name: "AI大咖讲座精选"
-      url: "file:///Users/YOU/.claude/skills/ai-talks-monitor/output/ai_talks_zh.xml"
-      max_age_days: 30
-      enabled: true
+notifications:
+  backend: "native"      # "native"（Telegram）、"openclaw"（Telegram/飞书）、"none"
+  language: "zh"          # "zh" 或 "original"
+  include_excerpt: true
 ```
 
-**Option B — GitHub Pages URL** (recommended for sharing or remote access):
+### 定时调度
 
-```yaml
-# In TrendRadar's config/config.yaml
-rss:
-  feeds:
-    - id: "ai-talks"
-      name: "AI Thought Leader Talks"
-      url: "https://YOURNAME.github.io/feeds/ai_talks.xml"
-      max_age_days: 30
-      enabled: true
-    - id: "ai-talks-zh"
-      name: "AI大咖讲座精选"
-      url: "https://YOURNAME.github.io/feeds/ai_talks_zh.xml"
-      max_age_days: 30
-      enabled: true
+**macOS (launchd)：** 保存 plist 到 `~/Library/LaunchAgents/`，定时运行 `--fetch-candidates`。
+
+**Linux (cron)：**
+```
+0 */4 * * * YOUTUBE_API_KEY=your_key python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates
 ```
 
-You can enable one or both feeds depending on your audience. The Chinese feed (`ai_talks_zh.xml`) uses Claude-generated translations and cleaned description translations, making it useful on its own for Chinese-speaking users.
-
-## Automated daily fetch
-
-The `--fetch-candidates` step is safe to schedule unattended — it only writes `output/candidates.json` and never modifies state or the RSS feed.
-
-**macOS (launchd):**
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.openclaw.ai-talks-monitor</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/bin/python3</string>
-    <string>/Users/YOU/.claude/skills/ai-talks-monitor/scripts/check_talks.py</string>
-    <string>--fetch-candidates</string>
-  </array>
-  <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>YOUTUBE_API_KEY</key><string>YOUR_KEY_HERE</string>
-  </dict>
-</dict>
-</plist>
-```
-
-Save to `~/Library/LaunchAgents/com.openclaw.ai-talks-monitor.plist`, then:
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.openclaw.ai-talks-monitor.plist
-```
-
-**Linux (cron):**
+## CLI 参考
 
 ```
-0 9 * * * YOUTUBE_API_KEY=your_key python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates
+--fetch-candidates           搜索 YouTube，过滤，写入候选文件
+--prepare-accepted FILE      合并 review 到 accepted.json
+--apply-enrichment FILE      合并 LLM 生成的字段到 accepted.json
+--commit-file FILE           生成 RSS feed，更新状态，发送通知
+--dry-run                    预览模式，不写入文件
+--lookback-days N            覆盖搜索时间窗口
+--limit N                    每类只处理前 N 条（测试用）
 ```
 
-## Files
+## 文件说明
 
-| File | Purpose |
-|------|---------|
-| `scripts/check_talks.py` | Main script |
-| `config.yaml` | Watchlist and settings |
-| `SKILL.md` | Skill instructions |
-| `output/candidates_people.json` / `output/candidates_topics.json` / `output/candidates_channels.json` | Auto-written by `--fetch-candidates`; preferred review inputs |
-| `output/review.json` | Written during classification; accepted/rejected IDs only |
-| `output/accepted.json` | Written by `--prepare-accepted`, then enriched by the agent; input to `--commit-file` |
-| `output/state.json` | Auto-managed: seen video IDs (with 30-day expiry), last_checked timestamp, rolling RSS items |
-| `output/ai_talks.xml` | Auto-generated English RSS 2.0 feed |
-| `output/ai_talks_zh.xml` | Auto-generated Chinese RSS 2.0 feed |
-
-Delete `output/state.json` to trigger a full re-scan on the next run.
-
-## CLI reference
-
-```
---fetch-candidates           Search YouTube, apply heuristic filter, write grouped candidate files
---prepare-accepted FILE      Read output/review.json and write output/accepted.json draft
---commit-file FILE           Read output/accepted.json and write both RSS feeds, update state
---commit ID [ID ...]         Legacy: accept these video IDs, write English feed only, update state
-
---dry-run                    Preview without writing files or updating state
---lookback-days N            Override config lookback_days; search N days back
---limit N                    Process only the first N entries per category (useful for testing)
-```
+| 文件 | 用途 |
+|------|------|
+| `SKILL.md` | Agent 指令 |
+| `CLASSIFY.md` | 分类规则参考 |
+| `config.yaml` | 追踪列表和配置 |
+| `scripts/check_talks.py` | 主脚本 |
+| `output/state.json` | 持久状态（已见 ID、RSS 条目） |
+| `output/scratch/` | 每次运行的工作文件（候选、审核、翻译） |
+| `output/ai_talks.xml` | 英文 RSS feed |
+| `output/ai_talks_zh.xml` | 中文 RSS feed |

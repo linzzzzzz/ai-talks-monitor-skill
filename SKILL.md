@@ -1,6 +1,6 @@
 ---
 name: ai-talks-monitor
-description: Monitors YouTube for new long-form original talks and interviews with AI thought leaders. Use this skill whenever the user asks about new AI talks or interviews, says things like "any new Sam Altman talks?", "check YouTube for new AI interviews", "run the talks monitor", "who's on the watchlist?", "add [name] to the watchlist", or wants to manage, schedule, or configure the AI talks monitor. Also use when the user wants to set up automated YouTube monitoring, integrate AI talk discovery with Telegram, Feishu, OpenClaw, or an RSS reader, or enable topic-based searches for conference keynotes or unknown speakers. Filters out derivative content (reactions, summaries, explainers) using LLM classification. Writes RSS 2.0 feeds and optionally sends a chat notification.
+description: Monitors YouTube for new long-form original talks and interviews with AI thought leaders. Use this skill whenever the user asks about new AI talks or interviews, says things like "any new Sam Altman talks?", "check YouTube for new AI interviews", "run the talks monitor", "who's on the watchlist?", "add [name] to the watchlist", or wants to manage, schedule, or configure the AI talks monitor. Also use when the user wants to set up automated YouTube monitoring, integrate AI talk discovery with Telegram, Feishu, OpenClaw, or an RSS reader, or enable org-based searches for conference keynotes or unknown speakers. Filters out derivative content (reactions, summaries, explainers) using LLM classification. Writes RSS 2.0 feeds and optionally sends a chat notification.
 metadata:
   {
     "openclaw":
@@ -22,7 +22,7 @@ The script handles YouTube search and state; you handle the classification step.
 
 Supports three modes:
 - **Person watchlist** (default): tracks specific people across any channel they appear on
-- **Topic search** (opt-in): catches lab insiders and researchers not on the person watchlist, using org-confirmation to filter noise
+- **Org search** (opt-in): catches lab insiders and researchers not on the person watchlist, using org-confirmation to filter noise
 - **Channel watchlist** (opt-in): monitors specific high-signal channels for any AI talk
 
 ## Setup
@@ -52,7 +52,7 @@ Do NOT add `--lookback-days` unless the user explicitly asks to backfill a longe
 
 **Phase 2 — classify candidates (subagent parallel):**
 
-The `--fetch-candidates` output ends with a **CLASSIFICATION PLAN** listing candidate files grouped by category. Spawn up to 3 subagents in parallel — one each for people, topics, and channels.
+The `--fetch-candidates` output ends with a **CLASSIFICATION PLAN** listing candidate files grouped by category. Spawn up to 3 subagents in parallel — one each for people, orgs, and channels.
 
 - **OpenClaw:** use `sessions_spawn` (with `runTimeoutSeconds: 300`)
 - **Claude Code:** use the `Agent` tool (with `model: "sonnet"`, `run_in_background: true`)
@@ -63,7 +63,7 @@ The `--fetch-candidates` output ends with a **CLASSIFICATION PLAN** listing cand
 - `SKILL_DIR/CLASSIFY.md` — classification rules
 - `SKILL_DIR/output/state.json` (if it exists) — `items` array for cross-run deduplication
 - All ephemeral files (candidates, reviews, enrichment, accepted) live under `output/scratch/`, which is wiped at the start of each `--fetch-candidates` run.
-- `SKILL_DIR/config.yaml` is NOT needed — the `org` field is already baked into each topic candidate
+- `SKILL_DIR/config.yaml` is NOT needed — the `org` field is already baked into each org candidate
 
 **Step 2 — spawn one subagent per category.** For each category listed in the CLASSIFICATION PLAN, spawn a subagent with this task:
 
@@ -72,10 +72,10 @@ Classify AI talk candidates for the "{category}" category. Read ALL candidate fi
 
 CANDIDATE FILES (read every file — each is ≤15 items):
 {list all chunk files for this category, e.g.:
-  - SKILL_DIR/output/scratch/candidates_topics_1.json
-  - SKILL_DIR/output/scratch/candidates_topics_2.json
-  - SKILL_DIR/output/scratch/candidates_topics_3.json
-  - SKILL_DIR/output/scratch/candidates_topics_4.json}
+  - SKILL_DIR/output/scratch/candidates_orgs_1.json
+  - SKILL_DIR/output/scratch/candidates_orgs_2.json
+  - SKILL_DIR/output/scratch/candidates_orgs_3.json
+  - SKILL_DIR/output/scratch/candidates_orgs_4.json}
 
 REVIEW FILE: SKILL_DIR/output/scratch/review_{category}.json
 
@@ -90,7 +90,7 @@ OUTPUT FORMAT — write the review file as valid JSON:
   "source": "scratch/candidates_{category}",
   "candidates_reviewed": <total items across ALL files above>,
   "accepted": [
-    {"id": "VIDEO_ID", "reason": "one sentence: who the speaker is, format, key topic"}
+    {"id": "VIDEO_ID", "reason": "one sentence: why this meets the acceptance criteria (e.g. which person is confirmed as speaker, or which org affiliation was verified)"}
   ],
   "rejected": ["VIDEO_ID_1", "VIDEO_ID_2"]
 }
@@ -181,23 +181,24 @@ Confirm the addition to the user.
 
 Edit `SKILL_DIR/config.yaml` and remove the relevant entry from `thought_leaders`.
 
-### Enable topic-based searches
+### Enable org-based searches
 
-Edit `SKILL_DIR/config.yaml`, set `topics.enabled: true`, and add entries under `topics.searches`:
+Edit `SKILL_DIR/config.yaml`, set `orgs.enabled: true`, and add entries under `orgs.searches`:
 ```yaml
-topics:
+orgs:
   enabled: true
   searches:
-    - name: "AI Safety"
-      search_query: '"AI safety" interview OR talk OR podcast'
-      min_duration_minutes: 30
+    - name: "Anthropic Talks"
+      search_query: 'anthropic researcher talk podcast'
+      org: "Anthropic"
+      min_duration_minutes: 20
 ```
 
-Topic searches are noisier than person searches — a higher `min_duration_minutes` helps.
+Org searches are noisier than person searches — a higher `min_duration_minutes` helps.
 
 ### Show current watchlist
 
-Read and display `thought_leaders`, `channels.list` (if enabled), and `topics.searches` (if enabled) from `SKILL_DIR/config.yaml`.
+Read and display `thought_leaders`, `channels.list` (if enabled), and `orgs.searches` (if enabled) from `SKILL_DIR/config.yaml`.
 
 ### Adjust settings
 - `min_duration_minutes` — minimum video length to consider (default: 20). Raise to cut more noise.
@@ -247,7 +248,7 @@ The fetch step can be scheduled unattended — `--fetch-candidates` only writes 
 
 ## How it works
 
-1. **YouTube search** (`--fetch-candidates`): Runs three source types — person watchlist (keyword search via API/yt-dlp), channel watchlist (channel feed via API with `channelId` or yt-dlp with `@handle`), topic searches (keyword search). All use a rolling `lookback_days` window.
+1. **YouTube search** (`--fetch-candidates`): Runs three source types — person watchlist (keyword search via API/yt-dlp), channel watchlist (channel feed via API with `channelId` or yt-dlp with `@handle`), org searches (keyword search). All use a rolling `lookback_days` window.
 2. **Heuristic pre-filter** (`--fetch-candidates`): Rejects titles containing "reaction", "summary", "explained", "breakdown", "解读", "总结", "面试", etc. Wipes `output/scratch/`, then writes survivors to grouped candidate files there
 3. **Classification (you)**: Read `output/state.json` + the grouped candidate files in `output/scratch/`; decide which are genuine original talks, deduplicating same-event uploads both within candidates and against already-committed items. Write decisions to `output/scratch/review.json`
 4. **Accepted-item enrichment (you)**: Run `--prepare-accepted`, write `output/scratch/enrichment.json` with `description_clean`, `title_zh`, `description_zh`, then run `--apply-enrichment`
@@ -281,7 +282,7 @@ rss:
 - `output/ai_talks_zh.xml` — persistent: auto-generated RSS 2.0 feed (Chinese titles and translated descriptions)
 - `output/scratch/` — ephemeral per-run directory, wiped at the start of each `--fetch-candidates`:
   - `candidates.json` — full candidate dump
-  - `candidates_people[_N].json` / `candidates_topics[_N].json` / `candidates_channels[_N].json` — chunked candidate files (≤15 items each)
+  - `candidates_people[_N].json` / `candidates_orgs[_N].json` / `candidates_channels[_N].json` — chunked candidate files (≤15 items each)
   - `review.json` — merged classification decisions
   - `review_{category}.json` — per-subagent classification output
   - `enrichment.json` — LLM-generated fields (description_clean, title_zh, description_zh)

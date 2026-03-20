@@ -18,7 +18,7 @@ Persistent outputs (output/):
   - state.json, ai_talks.xml, ai_talks_zh.xml
 
 Ephemeral outputs (output/scratch/ — wiped each --fetch-candidates run):
-  - candidates.json, candidates_people[_N].json, candidates_topics[_N].json, candidates_channels[_N].json
+  - candidates.json, candidates_people[_N].json, candidates_orgs[_N].json, candidates_channels[_N].json
   - review.json, review_{category}.json, enrichment.json, accepted.json
 """
 
@@ -50,7 +50,7 @@ RSS_FILE = OUTPUT_DIR / "ai_talks.xml"
 RSS_FILE_ZH = OUTPUT_DIR / "ai_talks_zh.xml"
 CANDIDATES_FILE = SCRATCH_DIR / "candidates.json"
 PEOPLE_CANDIDATES_FILE = SCRATCH_DIR / "candidates_people.json"
-TOPIC_CANDIDATES_FILE = SCRATCH_DIR / "candidates_topics.json"
+ORG_CANDIDATES_FILE = SCRATCH_DIR / "candidates_orgs.json"
 CHANNEL_CANDIDATES_FILE = SCRATCH_DIR / "candidates_channels.json"
 REVIEW_FILE = SCRATCH_DIR / "review.json"
 ACCEPTED_FILE = SCRATCH_DIR / "accepted.json"
@@ -116,7 +116,7 @@ def is_derivative(title: str) -> bool:
 
 
 def is_person_label(label: str) -> bool:
-    return not label.startswith("Topic: ") and not label.startswith("Channel: ")
+    return not label.startswith("Org: ") and not label.startswith("Channel: ")
 
 
 def mentions_person(video: dict, person_name: str) -> bool:
@@ -803,8 +803,9 @@ def build_rss(items: list[dict]) -> str:
         ET.SubElement(item, "author").text = source
         description = item_data.get("description_clean") or item_data.get("description", "")
         meta = f"{source} · {item_data['duration_min']} min" if source else f"{item_data['duration_min']} min"
+        thumb = f'<img src="https://img.youtube.com/vi/{item_data["id"]}/hqdefault.jpg" width="480" /><br/>'
         ET.SubElement(item, "description").text = (
-            f"{meta}\n\n"
+            f"{thumb}{meta}<br/><br/>"
             f"{description}"
         )
 
@@ -837,8 +838,9 @@ def build_rss_zh(items: list[dict]) -> str:
             or item_data.get("description", "")
         )
         meta = f"{source} · {item_data['duration_min']} 分钟" if source else f"{item_data['duration_min']} 分钟"
+        thumb = f'<img src="https://img.youtube.com/vi/{item_data["id"]}/hqdefault.jpg" width="480" /><br/>'
         ET.SubElement(item, "description").text = (
-            f"{meta}\n\n{summary}"
+            f"{thumb}{meta}<br/><br/>{summary}"
         )
 
     ET.indent(rss, space="  ")
@@ -914,7 +916,7 @@ def cmd_fetch_candidates(args) -> None:
 
     seen_ids: set[str] = set(load_seen_ids(state).keys())
     person_candidates: list[dict] = []
-    topic_candidates: list[dict] = []
+    org_candidates: list[dict] = []
     channel_candidates: list[dict] = []
     limit = args.limit  # None means no limit
 
@@ -933,22 +935,22 @@ def cmd_fetch_candidates(args) -> None:
         if resolved_search_backend == "yt_dlp":
             time.sleep(ytdlp_delay)
 
-    topics_config = config.get("topics", {})
-    if topics_config.get("enabled", False):
-        for topic in topics_config.get("searches", [])[:limit]:
-            topic_name = topic["name"]
-            topic_min = topic.get("min_duration_minutes", min_duration)
-            print(f"Topic: {topic_name}...")
+    orgs_config = config.get("orgs", {})
+    if orgs_config.get("enabled", False):
+        for org_entry in orgs_config.get("searches", [])[:limit]:
+            org_name = org_entry["name"]
+            org_min = org_entry.get("min_duration_minutes", min_duration)
+            print(f"Org: {org_name}...")
             try:
-                videos = do_search(topic["search_query"], published_after)
+                videos = do_search(org_entry["search_query"], published_after)
             except (requests.exceptions.RequestException, RuntimeError) as e:
                 print(f"  Search error: {e}")
                 continue
-            new_candidates = collect_candidates(videos, f"Topic: {topic_name}", seen_ids, topic_min)
-            topic_org = topic.get("org", "")
+            new_candidates = collect_candidates(videos, f"Org: {org_name}", seen_ids, org_min)
+            candidate_org = org_entry.get("org", "")
             for c in new_candidates:
-                c["org"] = topic_org
-            topic_candidates.extend(new_candidates)
+                c["org"] = candidate_org
+            org_candidates.extend(new_candidates)
             if resolved_search_backend == "yt_dlp":
                 time.sleep(ytdlp_delay)
 
@@ -977,7 +979,7 @@ def cmd_fetch_candidates(args) -> None:
                 collect_candidates(videos, f"Channel: {channel_name}", seen_ids, min_duration)
             )
 
-    all_candidates = person_candidates + topic_candidates + channel_candidates
+    all_candidates = person_candidates + org_candidates + channel_candidates
 
     # Backfill exact metadata for yt-dlp candidates when non-flat extraction is available.
     needs_enrichment = [
@@ -1031,7 +1033,7 @@ def cmd_fetch_candidates(args) -> None:
         return paths
 
     people_files = _write_chunks("candidates_people", person_candidates)
-    topic_files = _write_chunks("candidates_topics", topic_candidates)
+    org_files = _write_chunks("candidates_orgs", org_candidates)
     channel_files = _write_chunks("candidates_channels", channel_candidates)
 
     print(f"\n{len(all_candidates)} candidate(s) written:")
@@ -1041,7 +1043,7 @@ def cmd_fetch_candidates(args) -> None:
     print("Spawn up to 3 subagents (one per category) to classify in parallel.\n")
     categories = [
         ("people", people_files, person_candidates),
-        ("topics", topic_files, topic_candidates),
+        ("orgs", org_files, org_candidates),
         ("channels", channel_files, channel_candidates),
     ]
     for label, files, items in categories:
