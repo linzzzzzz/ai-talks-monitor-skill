@@ -170,7 +170,7 @@ git init && git remote add origin https://github.com/YOURNAME/feeds
 notifications:
   backend: "none"          # "none"、"native"（Telegram）、"openclaw"（Telegram/飞书）
   language: "zh"           # "zh"：用中文标题推送；"original"：用原始语言
-  include_excerpt: true    # 推送中附带一行摘要
+  include_excerpt: true    # 推送中附带摘要
 
   # backend: "native" 时的配置
   native:
@@ -185,11 +185,15 @@ notifications:
 
 ### 定时调度
 
-**macOS (launchd)：** 保存 plist 到 `~/Library/LaunchAgents/`，定时运行 `--fetch-candidates`。
+在 OpenClaw 中用 cron 任务调度，每天自动跑一次完整流程：
 
-**Linux (cron)：**
-```
-0 */4 * * * YOUTUBE_API_KEY=your_key python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates
+```bash
+openclaw cron add \
+  --name "AI Talks Monitor" \
+  --cron "0 10 * * *" \
+  --session isolated \
+  --message "Let's use ai-talks-monitor skill to get AI talks." \
+  --no-deliver
 ```
 
 ### TrendRadar 集成

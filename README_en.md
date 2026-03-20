@@ -168,7 +168,7 @@ Notifications are sent automatically after each `--commit-file`. Three backends 
 notifications:
   backend: "none"          # "none", "native" (Telegram), or "openclaw" (Telegram/Feishu)
   language: "zh"           # "zh" for Chinese titles in notifications, "original" for as-is
-  include_excerpt: true    # include a one-line description excerpt
+  include_excerpt: true    # include a description excerpt
 
   # Config for backend: "native"
   native:
@@ -183,11 +183,15 @@ notifications:
 
 ### Scheduling
 
-**macOS (launchd):** Save a plist to `~/Library/LaunchAgents/` that runs `--fetch-candidates` on a schedule.
+Schedule the full flow to run daily with an OpenClaw cron job:
 
-**Linux (cron):**
-```
-0 */4 * * * YOUTUBE_API_KEY=your_key python3 ~/.claude/skills/ai-talks-monitor/scripts/check_talks.py --fetch-candidates
+```bash
+openclaw cron add \
+  --name "AI Talks Monitor" \
+  --cron "0 10 * * *" \
+  --session isolated \
+  --message "Let's use ai-talks-monitor skill to get AI talks." \
+  --no-deliver
 ```
 
 ### TrendRadar integration
