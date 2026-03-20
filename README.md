@@ -26,6 +26,19 @@
 
 人物、频道、机构均可在 `config.yaml` 中自定义。
 
+<table>
+<tr>
+<td align="center">
+飞书推送效果<br>
+<img src="_image/feishu.png" alt="飞书推送效果" width="400"/>
+</td>
+<td align="center">
+RSS 阅读效果<br>
+<img src="_image/netnewswire.png" alt="NetNewsWire 阅读效果" width="400"/>
+</td>
+</tr>
+</table>
+
 ## 直接订阅（无需任何配置）
 
 不想折腾？直接订阅我的 RSS：
@@ -37,7 +50,7 @@
 
 ## 自己部署
 
-想自定义追踪谁？用自己的配置跑起来。
+想集成到自己的小龙虾并且自定义追踪谁？用自己的配置跑起来。
 
 ### 工作原理
 
@@ -145,11 +158,29 @@ git init && git remote add origin https://github.com/YOURNAME/feeds
 
 ### 通知配置
 
+每次 `--commit-file` 后可自动推送通知。支持三种方式：
+
+| 方式 | 说明 |
+|------|------|
+| `none` | 不发送通知（默认推荐，先跑通再开） |
+| `native` | 内置 Telegram 推送，需设置 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` |
+| `openclaw` | 通过 OpenClaw 推送到 Telegram 或飞书 |
+
 ```yaml
 notifications:
-  backend: "native"      # "native"（Telegram）、"openclaw"（Telegram/飞书）、"none"
-  language: "zh"          # "zh" 或 "original"
-  include_excerpt: true
+  backend: "none"          # "none"、"native"（Telegram）、"openclaw"（Telegram/飞书）
+  language: "zh"           # "zh"：用中文标题推送；"original"：用原始语言
+  include_excerpt: true    # 推送中附带一行摘要
+
+  # backend: "native" 时的配置
+  native:
+    channel: "telegram"
+    target: ""             # Telegram chat ID 或 channel ID
+
+  # backend: "openclaw" 时的配置
+  openclaw:
+    channel: "feishu"      # "telegram" 或 "feishu"
+    target: ""             # 如 "feishu:group:oc_xxx" 或 Telegram chat ID
 ```
 
 ### 定时调度

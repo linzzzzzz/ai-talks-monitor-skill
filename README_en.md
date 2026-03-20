@@ -24,6 +24,19 @@ The problem is their talks are scattered across dozens of YouTube channels, maki
 
 Fully customizable — add or remove people, channels, and orgs in `config.yaml`.
 
+<table>
+<tr>
+<td align="center">
+Feishu push notification<br>
+<img src="_image/feishu.png" alt="Feishu push notification" width="400"/>
+</td>
+<td align="center">
+RSS reading experience<br>
+<img src="_image/netnewswire.png" alt="NetNewsWire reading experience" width="400"/>
+</td>
+</tr>
+</table>
+
 ## Just subscribe (no setup needed)
 
 Don't want to run anything? Subscribe to the curated RSS feeds directly:
@@ -35,7 +48,7 @@ Use any RSS reader — [NetNewsWire](https://netnewswire.com/) (free, macOS/iOS)
 
 ## Run it yourself
 
-Want to customize who you track? Run the skill with your own watchlist.
+Want to deploy in your OpenClaw and customize who you track? Run the skill with your own configuration.
 
 ### How it works
 
@@ -143,11 +156,29 @@ Set `AI_TALKS_FEEDS_REPO=~/feeds` and feeds auto-publish after each run.
 
 ### Notifications
 
+Notifications are sent automatically after each `--commit-file`. Three backends are available:
+
+| Backend | Description |
+|---------|-------------|
+| `none` | No notifications (recommended to start with) |
+| `native` | Built-in Telegram delivery — requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` env vars |
+| `openclaw` | Delivers via OpenClaw to Telegram or Feishu |
+
 ```yaml
 notifications:
-  backend: "native"      # "native" (Telegram), "openclaw" (Telegram/Feishu), or "none"
-  language: "zh"          # "zh" or "original"
-  include_excerpt: true
+  backend: "none"          # "none", "native" (Telegram), or "openclaw" (Telegram/Feishu)
+  language: "zh"           # "zh" for Chinese titles in notifications, "original" for as-is
+  include_excerpt: true    # include a one-line description excerpt
+
+  # Config for backend: "native"
+  native:
+    channel: "telegram"
+    target: ""             # Telegram chat ID or channel ID
+
+  # Config for backend: "openclaw"
+  openclaw:
+    channel: "feishu"      # "telegram" or "feishu"
+    target: ""             # e.g. "feishu:group:oc_xxx" or Telegram chat ID
 ```
 
 ### Scheduling
