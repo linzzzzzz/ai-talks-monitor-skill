@@ -176,7 +176,7 @@ def search_youtube(query: str, published_after: str, api_key: str) -> list[dict]
             "type": "video",
             "videoDuration": "long",
             "publishedAfter": published_after,
-            "maxResults": 20,
+            "maxResults": 30,
             "key": api_key,
         },
         timeout=15,
@@ -215,7 +215,11 @@ def search_youtube(query: str, published_after: str, api_key: str) -> list[dict]
 
 
 def search_youtube_channel(channel_id: str, published_after: str, api_key: str) -> list[dict]:
-    """Search a specific YouTube channel for recent long videos via the Data API."""
+    """Search a specific YouTube channel for recent long videos via the Data API.
+
+    Returns lightweight results from the search endpoint only. Exact metadata
+    (duration, full description) is filled in later by bulk backfill.
+    """
     search_resp = requests.get(
         "https://www.googleapis.com/youtube/v3/search",
         params={
@@ -225,7 +229,7 @@ def search_youtube_channel(channel_id: str, published_after: str, api_key: str) 
             "videoDuration": "long",
             "order": "date",
             "publishedAfter": published_after,
-            "maxResults": 20,
+            "maxResults": 30,
             "key": api_key,
         },
         timeout=15,
@@ -235,29 +239,17 @@ def search_youtube_channel(channel_id: str, published_after: str, api_key: str) 
     if not items:
         return []
 
-    video_ids = [item["id"]["videoId"] for item in items]
-    details_resp = requests.get(
-        "https://www.googleapis.com/youtube/v3/videos",
-        params={"part": "contentDetails,snippet", "id": ",".join(video_ids), "key": api_key},
-        timeout=15,
-    )
-    details_resp.raise_for_status()
-    details = {v["id"]: v for v in details_resp.json().get("items", [])}
-
     results = []
     for item in items:
         vid_id = item["id"]["videoId"]
-        detail = details.get(vid_id)
-        if not detail:
-            continue
         results.append({
             "id": vid_id,
             "title": item["snippet"]["title"],
             "channel": item["snippet"]["channelTitle"],
-            "description": detail["snippet"]["description"],
+            "description": item["snippet"].get("description", ""),
             "published_at": item["snippet"]["publishedAt"],
-            "published_at_precision": "exact",
-            "duration_min": parse_iso_duration_minutes(detail["contentDetails"]["duration"]),
+            "published_at_precision": "approximate",
+            "duration_min": 0,
             "url": f"https://www.youtube.com/watch?v={vid_id}",
         })
     return results
@@ -281,7 +273,7 @@ def fetch_youtube_video_details(video_ids: list[str], api_key: str) -> dict[str,
     return details
 
 
-def enrich_with_youtube_api_metadata(candidates: list[dict], api_key: str) -> None:
+def backfill_youtube_api_metadata(candidates: list[dict], api_key: str) -> None:
     """Backfill exact metadata for candidates in-place using videos.list."""
     video_ids = [video["id"] for video in candidates if video.get("id")]
     if not video_ids:
@@ -380,8 +372,8 @@ def search_youtube_ytdlp(
     """Fallback YouTube search using yt-dlp (no API key required).
 
     Uses --flat-playlist for a fast initial search, returning results without
-    descriptions. Call enrich_ytdlp_descriptions() on the filtered candidates
-    afterward to fetch full descriptions via individual yt-dlp -J calls.
+    descriptions. Call backfill_ytdlp_metadata() on the filtered candidates
+    afterward to fetch full metadata via individual yt-dlp -J calls.
 
     Note: date filtering is approximate — yt-dlp doesn't support publishedAfter
     at query time, so we fetch 3x results and filter by upload_date post-fetch.
@@ -491,7 +483,7 @@ def ytdlp_fetch_video_metadata(video_id: str, cookies_browser: str = "") -> dict
         return {}
 
 
-def enrich_ytdlp_descriptions(candidates: list[dict], delay: float = 1.5, cookies_browser: str = "") -> None:
+def backfill_ytdlp_metadata(candidates: list[dict], delay: float = 1.5, cookies_browser: str = "") -> None:
     """Fetch full metadata for candidates in-place, with a delay between requests.
 
     Stops early if YouTube triggers a bot-check and prints a tip.
@@ -982,23 +974,23 @@ def cmd_fetch_candidates(args) -> None:
     all_candidates = person_candidates + org_candidates + channel_candidates
 
     # Backfill exact metadata for yt-dlp candidates when non-flat extraction is available.
-    needs_enrichment = [
+    needs_backfill = [
         c for c in all_candidates
         if not c.get("description") or c.get("published_at_precision") != "exact"
     ]
-    if needs_enrichment:
+    if needs_backfill:
         if resolved_metadata_backend == "youtube_api":
             try:
-                enrich_with_youtube_api_metadata(needs_enrichment, api_key)
+                backfill_youtube_api_metadata(needs_backfill, api_key)
             except requests.exceptions.RequestException as e:
-                print(f"Metadata enrichment error: {e}")
+                print(f"Metadata backfill error: {e}")
         elif resolved_metadata_backend == "yt_dlp":
-            enrich_ytdlp_descriptions(needs_enrichment, cookies_browser=cookies_browser)
+            backfill_ytdlp_metadata(needs_backfill, cookies_browser=cookies_browser)
         else:
             print(f"Unknown backends.metadata value: {resolved_metadata_backend}")
 
-    # Post-enrichment date filter: yt-dlp flat search may return videos without
-    # dates that slip through the initial cutoff. After metadata enrichment fills
+    # Post-backfill date filter: yt-dlp flat search may return videos without
+    # dates that slip through the initial cutoff. After metadata backfill fills
     # in exact dates, re-apply the cutoff to remove stale videos.
     cutoff_date = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
     before_count = len(all_candidates)
@@ -1011,7 +1003,7 @@ def cmd_fetch_candidates(args) -> None:
     org_candidates = [c for c in all_candidates if c.get("label", "").startswith("Org: ")]
     channel_candidates = [c for c in all_candidates if c.get("label", "").startswith("Channel: ")]
     if before_count != len(all_candidates):
-        print(f"  Post-enrichment date filter removed {before_count - len(all_candidates)} stale candidate(s)")
+        print(f"  Post-backfill date filter removed {before_count - len(all_candidates)} stale candidate(s)")
 
     write_json(CANDIDATES_FILE, all_candidates)
 
