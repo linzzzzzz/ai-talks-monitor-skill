@@ -12,17 +12,17 @@
 
 ## 适合谁
 
-- 🔥 **AI 狂热者** — 闲暇时间喜欢听大佬访谈播客
+- 🔥 **AI 热爱者** — 闲暇时间喜欢听大佬访谈播客
 - 📝 **内容创作者** — 需要第一时间跟踪最新访谈
 - 亦或者想边看访谈边学英语的同学，也可以一试
 
 ## 默认覆盖范围
 
-| 类别 | 示例 |
-|------|------|
-| 🏢 人物 | Sam Altman、Dario Amodei、Jensen Huang、Demis Hassabis、Yann LeCun、李飞飞、吴恩达等 |
-| 🎙️ 频道 | 张小珺、Lex Fridman、Dwarkesh Patel、Y Combinator |
-| 🔬 机构 | OpenAI、Anthropic、Google DeepMind、NVIDIA AI、Meta AI 团队成员的采访和播客 |
+| 类别 | 完整列表 |
+|------|----------|
+| 🏢 人物 | Sam Altman、Greg Brockman、Dario Amodei、Amanda Askell、Demis Hassabis、Jeff Dean、Yann LeCun、Geoffrey Hinton、Yoshua Bengio、Fei-Fei Li (李飞飞)、Andrej Karpathy、Andrew Ng (吴恩达)、Ilya Sutskever、Aidan Gomez、Jensen Huang、Satya Nadella |
+| 🎙️ 频道 | [Lex Fridman](https://www.youtube.com/@lexfridman)、[Dwarkesh Patel](https://www.youtube.com/@DwarkeshPatel)、[Machine Learning Street Talk](https://www.youtube.com/@MachineLearningStreetTalk)、[Y Combinator](https://www.youtube.com/@ycombinator)、[张小珺 Podcast](https://www.youtube.com/@xiaojunpodcast) |
+| 🔬 机构 | OpenAI、Anthropic、Google DeepMind、Meta AI |
 
 人物、频道、机构均可在 `config.yaml` 中自定义。
 
@@ -59,7 +59,7 @@ YouTube 搜索 → 启发式预过滤 → LLM 分类 → 翻译 → RSS + 推送
 ```
 
 1. **搜索** — 按 watchlist 搜索 YouTube，过滤反应视频、总结、剪辑
-2. **分类** — LLM 子代理按类别审核，只保留真正的一手演讲和访谈
+2. **分类** — Sub-agents按类别审核，只保留真正的一手演讲和访谈
 3. **翻译** — 为通过的内容生成中文标题和摘要
 4. **发布** — 生成 RSS 订阅源，更新状态，推送通知（Telegram/飞书）
 
@@ -68,7 +68,7 @@ YouTube 搜索 → 启发式预过滤 → LLM 分类 → 翻译 → RSS + 推送
 ### 前置条件
 
 - **LLM Agent** — 需要 [OpenClaw](https://openclaw.com)（已在 MiniMax 2.5 和 2.7 下测试通过）或 [Claude Code](https://claude.com/claude-code)。分类步骤（第二步）由 LLM Agent 完成，本 Skill 不能作为独立 CLI 工具使用。
-- **YouTube Data API v3 密钥** — [免费获取](https://console.cloud.google.com)。默认配置用 yt-dlp 做搜索（不需要 key），用 YouTube API 做元数据补全。没有 API Key 时元数据回退到 yt-dlp，经常触发机器人检测，导致数据不完整、feed 生成失败。
+- **YouTube Data API v3 密钥** — [免费获取](https://console.cloud.google.com)。默认配置用 yt-dlp 做搜索（不需要 key），用 YouTube API 做元数据补全。
 - **Python 3.9+**
 
 ### 安装
@@ -95,9 +95,9 @@ pip install requests pyyaml yt-dlp
 
 | 变量 | 是否必须 | 用途 |
 |------|----------|------|
-| `YOUTUBE_API_KEY` | **必须** | YouTube Data API v3 密钥（[免费获取](https://console.cloud.google.com)）。默认配置用 yt-dlp 做搜索（不需要 key），用 YouTube API 做元数据补全——这种混合模式既省 API 配额又能拿到可靠的元数据（发布日期、完整描述）。如果没有 API Key，元数据也会回退到 yt-dlp，而 yt-dlp 经常触发 YouTube 的机器人检测，导致数据不完整、feed 生成失败。 |
-| `AI_TALKS_FEEDS_REPO` | 否 | 本地 git 仓库路径，用于自动发布 feed 到 GitHub Pages |
+| `YOUTUBE_API_KEY` | **必须** | YouTube Data API v3 密钥（[免费获取](https://console.cloud.google.com)）。默认配置用 yt-dlp 做搜索（不需要 key），用 YouTube API 做元数据补全——这种混合模式既省 API 配额又能拿到可靠的元数据（发布日期、完整描述）。|
 | `TELEGRAM_BOT_TOKEN` | 否 | Telegram 通知（需同时在 `config.yaml` 的 `native.target` 中设置聊天/频道 ID），无需指定如果沿用OpenClaw的推送 |
+| `AI_TALKS_FEEDS_REPO` | 否 | 本地 git 仓库路径，用于自动发布 feed 到 GitHub Pages |
 
 **4. 运行**
 

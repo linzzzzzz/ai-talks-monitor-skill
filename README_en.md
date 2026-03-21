@@ -16,11 +16,11 @@ The problem is their talks are scattered across dozens of YouTube channels, maki
 
 ## What it covers
 
-| Category | Examples |
-|----------|----------|
-| 🏢 People | Sam Altman, Dario Amodei, Jensen Huang, Demis Hassabis, Yann LeCun, Fei-Fei Li, Andrew Ng, and more |
-| 🎙️ Channels | Zhang Xiaojun Podcast, Lex Fridman, Dwarkesh Patel, Y Combinator |
-| 🔬 Orgs | Talks and podcasts from researchers from OpenAI, Anthropic, Google DeepMind, NVIDIA AI, Meta AI |
+| Category | Full list |
+|----------|-----------|
+| 🏢 People | Sam Altman, Greg Brockman, Dario Amodei, Amanda Askell, Demis Hassabis, Jeff Dean, Yann LeCun, Geoffrey Hinton, Yoshua Bengio, Fei-Fei Li, Andrej Karpathy, Andrew Ng, Ilya Sutskever, Aidan Gomez, Jensen Huang, Satya Nadella |
+| 🎙️ Channels | [Lex Fridman](https://www.youtube.com/@lexfridman), [Dwarkesh Patel](https://www.youtube.com/@DwarkeshPatel), [Machine Learning Street Talk](https://www.youtube.com/@MachineLearningStreetTalk), [Y Combinator](https://www.youtube.com/@ycombinator), [Zhang Xiaojun Podcast](https://www.youtube.com/@xiaojunpodcast) |
+| 🔬 Orgs | OpenAI, Anthropic, Google DeepMind, Meta AI |
 
 Fully customizable — add or remove people, channels, and orgs in `config.yaml`.
 
@@ -57,7 +57,7 @@ YouTube search → heuristic pre-filter → LLM classification → enrichment �
 ```
 
 1. **Fetch** — searches YouTube for each watchlist entry, filters out reactions/summaries/clips
-2. **Classify** — LLM subagents review candidates per category, accepting only genuine first-person talks
+2. **Classify** — Sub-agents review candidates per category, accepting only genuine first-person talks
 3. **Enrich** — translates titles and descriptions to Chinese for accepted talks
 4. **Publish** — generates RSS feeds, updates state, sends notifications (Telegram/Feishu)
 
@@ -66,7 +66,7 @@ Runs every few hours automatically. The fetch step is safe to schedule unattende
 ### Prerequisites
 
 - **An LLM agent** — [OpenClaw](https://openclaw.com) (tested with MiniMax 2.5 and 2.7) or [Claude Code](https://claude.com/claude-code). The classification step (Step 2) uses an LLM agent to review candidates — this skill is not a standalone CLI tool.
-- **YouTube Data API v3 key** — [get one free](https://console.cloud.google.com). The default config uses yt-dlp for search (no key needed) but the YouTube API for metadata enrichment. Without a key, metadata falls back to yt-dlp, which frequently triggers YouTube bot-detection, leading to incomplete data and failed feed generation.
+- **YouTube Data API v3 key** — [get one free](https://console.cloud.google.com). The default config uses yt-dlp for search (no key needed) but the YouTube API for metadata enrichment.
 - **Python 3.9+**
 
 ### Installation
@@ -93,9 +93,9 @@ pip install requests pyyaml yt-dlp
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `YOUTUBE_API_KEY` | **Yes** | YouTube Data API v3 key ([get one free](https://console.cloud.google.com)). The default config uses yt-dlp for search (which works fine without a key) but the YouTube API for metadata enrichment — this hybrid approach saves API quota on discovery while still getting reliable metadata (publish dates, full descriptions). Without a key, metadata also falls back to yt-dlp, which frequently triggers YouTube bot-detection, leading to incomplete data and failed feed generation. |
-| `AI_TALKS_FEEDS_REPO` | No | Path to a local git repo for auto-publishing feeds to GitHub Pages |
+| `YOUTUBE_API_KEY` | **Yes** | YouTube Data API v3 key ([get one free](https://console.cloud.google.com)). The default config uses yt-dlp for search (which works fine without a key) but the YouTube API for metadata enrichment — this hybrid approach saves API quota on discovery while still getting reliable metadata (publish dates, full descriptions). |
 | `TELEGRAM_BOT_TOKEN` | No | For native Telegram notifications (also set chat/channel ID in `native.target` in `config.yaml`), no need to specify if you use OpenClaw's notification |
+| `AI_TALKS_FEEDS_REPO` | No | Path to a local git repo for auto-publishing feeds to GitHub Pages |
 
 **4. Run it**
 
