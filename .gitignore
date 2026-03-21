@@ -1,4 +1,5 @@
 output/
+tests/
 __pycache__/
 *.pyc
 .DS_Store
