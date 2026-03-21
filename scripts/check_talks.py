@@ -56,7 +56,7 @@ REVIEW_FILE = SCRATCH_DIR / "review.json"
 ACCEPTED_FILE = SCRATCH_DIR / "accepted.json"
 
 RSS_RETENTION_DAYS = 30
-YOUTUBE_SEARCH_SP_THIS_MONTH = "EgIIBA%253D%253D"
+YOUTUBE_SEARCH_SP_THIS_WEEK = "EgQIAxAB"
 
 DERIVATIVE_KEYWORDS = [
     "reaction", "reacts", "reacted", "summary", "summarized",
@@ -168,9 +168,9 @@ def youtube_search_results_url(query: str, sp: str | None = None) -> str:
 
 
 def search_youtube(query: str, published_after: str, api_key: str) -> list[dict]:
-    search_resp = requests.get(
+    data = _api_get(
         "https://www.googleapis.com/youtube/v3/search",
-        params={
+        {
             "part": "snippet",
             "q": query,
             "type": "video",
@@ -179,21 +179,17 @@ def search_youtube(query: str, published_after: str, api_key: str) -> list[dict]
             "maxResults": 30,
             "key": api_key,
         },
-        timeout=15,
     )
-    search_resp.raise_for_status()
-    items = search_resp.json().get("items", [])
+    items = data.get("items", [])
     if not items:
         return []
 
     video_ids = [item["id"]["videoId"] for item in items]
-    details_resp = requests.get(
+    details_data = _api_get(
         "https://www.googleapis.com/youtube/v3/videos",
-        params={"part": "contentDetails,snippet", "id": ",".join(video_ids), "key": api_key},
-        timeout=15,
+        {"part": "contentDetails,snippet", "id": ",".join(video_ids), "key": api_key},
     )
-    details_resp.raise_for_status()
-    details = {v["id"]: v for v in details_resp.json().get("items", [])}
+    details = {v["id"]: v for v in details_data.get("items", [])}
 
     results = []
     for item in items:
@@ -220,9 +216,9 @@ def search_youtube_channel(channel_id: str, published_after: str, api_key: str) 
     Returns lightweight results from the search endpoint only. Exact metadata
     (duration, full description) is filled in later by bulk backfill.
     """
-    search_resp = requests.get(
+    data = _api_get(
         "https://www.googleapis.com/youtube/v3/search",
-        params={
+        {
             "part": "snippet",
             "channelId": channel_id,
             "type": "video",
@@ -232,10 +228,8 @@ def search_youtube_channel(channel_id: str, published_after: str, api_key: str) 
             "maxResults": 30,
             "key": api_key,
         },
-        timeout=15,
     )
-    search_resp.raise_for_status()
-    items = search_resp.json().get("items", [])
+    items = data.get("items", [])
     if not items:
         return []
 
@@ -255,6 +249,21 @@ def search_youtube_channel(channel_id: str, published_after: str, api_key: str) 
     return results
 
 
+def _api_get(url: str, params: dict, max_retries: int = 3) -> dict:
+    """GET a YouTube API endpoint with retries on transient SSL/connection errors."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as e:
+            if attempt < max_retries:
+                print(f"  Retry {attempt}/{max_retries} after connection error: {e}")
+                time.sleep(2 * attempt)
+            else:
+                raise
+
+
 def fetch_youtube_video_details(video_ids: list[str], api_key: str) -> dict[str, dict]:
     """Fetch full metadata for YouTube video IDs via videos.list."""
     details: dict[str, dict] = {}
@@ -262,13 +271,11 @@ def fetch_youtube_video_details(video_ids: list[str], api_key: str) -> dict[str,
         batch_ids = video_ids[start:start + 50]
         if not batch_ids:
             continue
-        details_resp = requests.get(
+        data = _api_get(
             "https://www.googleapis.com/youtube/v3/videos",
-            params={"part": "contentDetails,snippet", "id": ",".join(batch_ids), "key": api_key},
-            timeout=15,
+            {"part": "contentDetails,snippet", "id": ",".join(batch_ids), "key": api_key},
         )
-        details_resp.raise_for_status()
-        for item in details_resp.json().get("items", []):
+        for item in data.get("items", []):
             details[item["id"]] = item
     return details
 
@@ -366,7 +373,7 @@ def search_youtube_ytdlp(
     query: str,
     published_after: str,
     max_results: int = 20,
-    use_this_month_filter: bool = False,
+    use_this_week_filter: bool = False,
     cookies_browser: str = "",
 ) -> list[dict]:
     """Fallback YouTube search using yt-dlp (no API key required).
@@ -383,8 +390,8 @@ def search_youtube_ytdlp(
     """
     cutoff = datetime.fromisoformat(published_after.replace("Z", "+00:00")).date()
     search_target = (
-        youtube_search_results_url(query, YOUTUBE_SEARCH_SP_THIS_MONTH)
-        if use_this_month_filter else f"ytsearch{max_results * 3}:{query}"
+        youtube_search_results_url(query, YOUTUBE_SEARCH_SP_THIS_WEEK)
+        if use_this_week_filter else f"ytsearch{max_results * 3}:{query}"
     )
     cmd = [
         "yt-dlp", "--flat-playlist", "--dump-single-json",
@@ -850,7 +857,7 @@ def cmd_fetch_candidates(args) -> None:
     state = load_state()
     ytdlp_search_config = config.get("ytdlp_search", {})
     backend_config = config.get("backends", {})
-    use_this_month_filter = ytdlp_search_config.get("use_this_month_filter", False)
+    use_this_week_filter = ytdlp_search_config.get("use_this_week_filter", False)
 
     api_key = os.environ.get("YOUTUBE_API_KEY", "")
     cookies_browser = ytdlp_search_config.get("cookies_from_browser") or ""
@@ -879,7 +886,7 @@ def cmd_fetch_candidates(args) -> None:
             return search_youtube_ytdlp(
                 query,
                 published_after,
-                use_this_month_filter=use_this_month_filter,
+                use_this_week_filter=use_this_week_filter,
                 cookies_browser=cookies_browser,
             )
     else:

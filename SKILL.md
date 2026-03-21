@@ -54,7 +54,7 @@ Do NOT add `--lookback-days` unless the user explicitly asks to backfill a longe
 
 The `--fetch-candidates` output ends with a **CLASSIFICATION PLAN** listing candidate files grouped by category. Spawn up to 3 subagents in parallel — one each for people, orgs, and channels.
 
-- **OpenClaw:** use `sessions_spawn` (with `runTimeoutSeconds: 300`)
+- **OpenClaw:** use `sessions_spawn` (with `runTimeoutSeconds: 480`)
 - **Claude Code:** use the `Agent` tool (with `model: "sonnet"`, `run_in_background: true`)
 
 **Do NOT read any `candidates_*.json` files yourself.** The subagents will read them. You only need the reference files below.
@@ -169,13 +169,13 @@ After committing, report what was accepted to the user.
 Edit `SKILL_DIR/config.yaml` and add an entry under `thought_leaders`:
 ```yaml
 - name: "[Full Name]"
-  search_query: '"[Full Name]" interview'
+  search_query: '[Full Name]'
 ```
 
 For bilingual subjects, add a second entry with their native name:
 ```yaml
 - name: "Fei-Fei Li (Chinese)"
-  search_query: '"李飞飞" 访谈'
+  search_query: '李飞飞'
 ```
 
 Confirm the addition to the user.
@@ -208,7 +208,7 @@ Read and display `thought_leaders`, `channels.list` (if enabled), and `orgs.sear
 - `lookback_days` — rolling search window in days (default: 5). Every run searches this far back.
 - `backends.search` — `auto`, `youtube_api`, or `yt_dlp`. Use `yt_dlp` to save quota on discovery searches.
 - `backends.metadata` — `auto`, `youtube_api`, or `yt_dlp`. A good hybrid setup is `search: yt_dlp` plus `metadata: youtube_api`.
-- `ytdlp_search.use_this_month_filter` — when `backends.search` uses yt-dlp, optionally apply a YouTube-side "This month" prefilter before local date filtering (default: `true`). Reduces stale results but may also reduce recall; local date filtering remains the authoritative cutoff either way.
+- `ytdlp_search.use_this_week_filter` — when `backends.search` uses yt-dlp, apply a YouTube-side "This week" prefilter before local date filtering (default: `true`). Surfaces fresh uploads that yt-dlp's default relevance ranking misses; local date filtering remains the authoritative cutoff either way.
 - `ytdlp_search.cookies_from_browser` — browser to pull cookies from when a yt-dlp backend is used (`chrome`, `firefox`, or `safari`; default: `""`). Set this if yt-dlp hits YouTube bot-checks or if you want yt-dlp metadata fallback to fetch full descriptions.
 - `notifications.backend` — `telegram`, `openclaw`, or `none`
 - `notifications.openclaw.channel` / `notifications.openclaw.target` / `notifications.openclaw.account` — used when routing notifications through OpenClaw, including Feishu support

@@ -3,52 +3,51 @@
 # original talks/interviews (not reactions, summaries, or other derivative content).
 #
 # Tips for search_query:
-#   - Wrap the name in quotes for exact matching: '"Sam Altman" interview'
-#   - For bilingual subjects, add a second entry with their native name:
-#       name: "Fei-Fei Li (Chinese)"
-#       search_query: '"李飞飞" 访谈'
+#   - Use the person's full name as the query — no genre keywords or quotes needed
+#   - The "This week" filter + heuristic blacklist + Claude classification handle noise
+#   - For bilingual subjects, add a second entry with their native name
 thought_leaders:
   # OpenAI
   - name: "Sam Altman"          # CEO, OpenAI
-    search_query: '"Sam Altman" interview'
+    search_query: 'Sam Altman'
   - name: "Greg Brockman"       # Co-founder, OpenAI
-    search_query: '"Greg Brockman" interview'
+    search_query: 'Greg Brockman'
   # Anthropic
   - name: "Dario Amodei"        # CEO, Anthropic
-    search_query: '"Dario Amodei" interview'
+    search_query: 'Dario Amodei'
   - name: "Amanda Askell"       # Character lead, Anthropic
-    search_query: '"Amanda Askell" interview'
+    search_query: 'Amanda Askell'
   # Google DeepMind
   - name: "Demis Hassabis"      # CEO, Google DeepMind
-    search_query: '"Demis Hassabis" interview'
+    search_query: 'Demis Hassabis'
   - name: "Jeff Dean"           # Chief Scientist, Google
-    search_query: '"Jeff Dean" interview'
+    search_query: 'Jeff Dean'
   # Meta AI
   - name: "Yann LeCun"          # Chief AI Scientist, Meta
-    search_query: '"Yann LeCun" interview'
+    search_query: 'Yann LeCun'
   # Researchers / academics
   - name: "Geoffrey Hinton"     # Godfather of deep learning, Turing Award
-    search_query: '"Geoffrey Hinton" interview'
+    search_query: 'Geoffrey Hinton'
   - name: "Yoshua Bengio"       # Deep learning pioneer, Turing Award
-    search_query: '"Yoshua Bengio" interview'
+    search_query: 'Yoshua Bengio'
   - name: "Fei-Fei Li"          # Stanford HAI co-director, ImageNet creator
-    search_query: '"Fei-Fei Li" interview'
+    search_query: 'Fei-Fei Li'
   - name: "Andrej Karpathy"     # Ex-Tesla AI / OpenAI, educator
-    search_query: '"Andrej Karpathy" interview'
+    search_query: 'Andrej Karpathy'
   - name: "Andrew Ng"           # DeepLearning.AI founder, Stanford professor
-    search_query: '"Andrew Ng" interview'
+    search_query: 'Andrew Ng'
   # Other labs / founders
   - name: "Ilya Sutskever"      # Co-founder, Safe Superintelligence Inc.
-    search_query: '"Ilya Sutskever" interview'
+    search_query: 'Ilya Sutskever'
   - name: "Aidan Gomez"         # CEO, Cohere
-    search_query: '"Aidan Gomez" interview'
+    search_query: 'Aidan Gomez'
   # Industry
   - name: "Jensen Huang"        # CEO, NVIDIA
-    search_query: '"Jensen Huang" interview'
+    search_query: 'Jensen Huang'
   - name: "Satya Nadella"       # CEO, Microsoft
-    search_query: '"Satya Nadella" AI interview'
+    search_query: 'Satya Nadella'
   - name: "Peter Steinberger"   # Creator of OpenClaw
-    search_query: '"Peter Steinberger" interview'
+    search_query: 'Peter Steinberger'
 
 # Org-based searches. Useful for catching talks from people you don't know yet
 # — engineers, researchers, and founders from specific AI labs who aren't on the
@@ -130,7 +129,7 @@ backends:
 # metadata fetches frequently hit YouTube bot-checks unless cookies are provided.
 # Prefer YouTube API metadata when a key is available.
 ytdlp_search:
-  use_this_month_filter: true
+  use_this_week_filter: true
   cookies_from_browser: ""  # chrome, firefox, or safari — leave blank to disable
 
 # Notification delivery after --commit / --commit-file.
