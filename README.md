@@ -6,9 +6,9 @@
 
 ## 为什么做这个
 
-现在 AI 相关的内容太多了，各种反应视频、总结、热评，真正有干货的不多。最有价值但被低估的信息源是什么？直接听当事人怎么说——OpenAI、Anthropic、DeepMind、NVIDIA、Meta AI 这些顶尖 AI 公司核心人物的一手演讲和访谈。
+现在 AI 相关的内容太多了，各种反应视频、总结、热评，真正有价值的内容经常被淹没在噪音里。最有价值但被低估的信息源是什么？直接听当事人怎么说——OpenAI、Anthropic、DeepMind、NVIDIA、Meta AI 这些顶尖 AI 公司核心人物的一手演讲和访谈。
 
-但这些人的内容散落在 YouTube 各个频道，手动追踪几乎不可能。这个 Skill 用 AI Agent 自动搜索、筛选、翻译，帮你省掉这些功夫。
+但这些人的内容散落在 YouTube 各个频道，手动追踪很困难。这个 Skill 用 AI Agent 自动搜索、筛选、翻译，帮你省掉这些功夫。
 
 ## 适合谁
 
@@ -41,7 +41,7 @@ RSS 阅读效果<br>
 
 ## 直接订阅（无需任何配置）
 
-不想折腾？直接订阅我的 RSS，每天北京时间 10:10 左右更新：
+不想折腾？直接订阅我的 RSS，每天北京时间 12:10 左右更新：
 
 - **中文版：** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
 - **英文版：** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
@@ -62,8 +62,6 @@ YouTube 搜索 → 启发式预过滤 → LLM 分类 → 翻译 → RSS + 推送
 2. **分类** — Sub-agents按类别审核，只保留真正的一手演讲和访谈
 3. **翻译** — 为通过的内容生成中文标题和摘要
 4. **发布** — 生成 RSS 订阅源，更新状态，推送通知（Telegram/飞书）
-
-每隔几小时自动跑一次。搜索步骤可以安全地无人值守调度。
 
 ### 前置条件
 

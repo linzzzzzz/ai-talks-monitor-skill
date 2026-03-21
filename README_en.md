@@ -4,7 +4,7 @@ An Agent Skill that automatically tracks first-person talks and interviews from 
 
 ## Why this exists
 
-There's too much AI content out there — reactions, summaries, hot takes — but not enough signal. The most valuable (and underrated) information source? Hearing directly from the people building AI: OpenAI, Anthropic, DeepMind, NVIDIA, Meta AI and others.
+There's too much AI content out there — reactions, summaries, hot takes — and the truly valuable stuff often gets buried in the noise. The most valuable (and underrated) information source? Hearing directly from the people building AI: OpenAI, Anthropic, DeepMind, NVIDIA, Meta AI and others.
 
 The problem is their talks are scattered across dozens of YouTube channels, making them nearly impossible to track manually. This skill solves that — an AI agent searches, classifies, and curates so you don't have to.
 
@@ -39,7 +39,7 @@ RSS reading experience<br>
 
 ## Just subscribe (no setup needed)
 
-Don't want to run anything? Subscribe to the curated RSS feeds directly. Updated daily around 10:10 AM Beijing time (UTC+8):
+Don't want to run anything? Subscribe to the curated RSS feeds directly. Updated daily around 12:10 PM Beijing time (UTC+8):
 
 - **English:** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
 - **Chinese:** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
@@ -60,8 +60,6 @@ YouTube search → heuristic pre-filter → LLM classification → enrichment �
 2. **Classify** — Sub-agents review candidates per category, accepting only genuine first-person talks
 3. **Enrich** — translates titles and descriptions to Chinese for accepted talks
 4. **Publish** — generates RSS feeds, updates state, sends notifications (Telegram/Feishu)
-
-Runs every few hours automatically. The fetch step is safe to schedule unattended.
 
 ### Prerequisites
 
