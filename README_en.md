@@ -171,19 +171,6 @@ notifications:
     target: ""             # e.g. "feishu:group:oc_xxx" or Telegram chat ID
 ```
 
-### Scheduling
-
-Schedule the full flow to run daily with an OpenClaw cron job:
-
-```bash
-openclaw cron add \
-  --name "AI Talks Monitor" \
-  --cron "0 10 * * *" \
-  --session isolated \
-  --message "Let's use ai-talks-monitor skill to get AI talks." \
-  --no-deliver
-```
-
 ### TrendRadar integration
 
 If you use [TrendRadar](https://github.com/sansan0/TrendRadar) for trending topics monitoring, you can add the AI talks feeds to your TrendRadar config to get AI talks included in your daily briefings:

@@ -173,19 +173,6 @@ notifications:
     target: ""             # 如 "feishu:group:oc_xxx" 或 Telegram chat ID
 ```
 
-### 定时调度
-
-在 OpenClaw 中用 cron 任务调度，每天自动跑一次完整流程：
-
-```bash
-openclaw cron add \
-  --name "AI Talks Monitor" \
-  --cron "0 10 * * *" \
-  --session isolated \
-  --message "Let's use ai-talks-monitor skill to get AI talks." \
-  --no-deliver
-```
-
 ### TrendRadar 集成
 
 如果你在用 [TrendRadar](https://github.com/sansan0/TrendRadar) 做热点监控，可以把 AI 演讲 feed 加到 TrendRadar 配置中，让 AI 大咖访谈出现在你的每日简报里：
