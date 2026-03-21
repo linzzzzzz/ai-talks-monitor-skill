@@ -1,6 +1,6 @@
 # AI Talks Monitor
 
-An Agent Skill that automatically tracks first-person talks and interviews from top AI leaders on YouTube, filters out noise, and delivers them as bilingual RSS feeds (English + Chinese).
+An Agent Skill that automatically tracks first-person talks and interviews from top AI leaders on YouTube, filters out noise, and delivers them as bilingual RSS feeds (English + Chinese), with optional push notifications to Telegram or Feishu.
 
 ## Why this exists
 
@@ -53,7 +53,7 @@ Want to deploy in your OpenClaw and customize who you track? Run the skill with 
 ### How it works
 
 ```
-YouTube search → heuristic pre-filter → LLM classification → enrichment → RSS feeds
+YouTube search → heuristic pre-filter → LLM classification → enrichment → RSS + notifications
 ```
 
 1. **Fetch** — searches YouTube for each watchlist entry, filters out reactions/summaries/clips
@@ -95,31 +95,13 @@ pip install requests pyyaml yt-dlp
 |----------|----------|---------|
 | `YOUTUBE_API_KEY` | **Yes** | YouTube Data API v3 key ([get one free](https://console.cloud.google.com)). The default config uses yt-dlp for search (which works fine without a key) but the YouTube API for metadata enrichment — this hybrid approach saves API quota on discovery while still getting reliable metadata (publish dates, full descriptions). Without a key, metadata also falls back to yt-dlp, which frequently triggers YouTube bot-detection, leading to incomplete data and failed feed generation. |
 | `AI_TALKS_FEEDS_REPO` | No | Path to a local git repo for auto-publishing feeds to GitHub Pages |
-| `TELEGRAM_BOT_TOKEN` | No | For native Telegram notifications |
-| `TELEGRAM_CHAT_ID` | No | Telegram chat/channel ID |
+| `TELEGRAM_BOT_TOKEN` | No | For native Telegram notifications (also set chat/channel ID in `native.target` in `config.yaml`), no need to specify if you use OpenClaw's notification |
 
 **4. Run it**
 
 Just tell your agent:
 
 > "Check for new AI talks"
-
-Or run the steps manually:
-
-```bash
-# Step 1: Fetch candidates
-python3 scripts/check_talks.py --fetch-candidates
-
-# Step 2: Classify (done by the agent via SKILL.md)
-
-# Step 3: Prepare accepted items
-python3 scripts/check_talks.py --prepare-accepted output/scratch/review.json
-
-# Step 4: Commit to feeds
-python3 scripts/check_talks.py --commit-file output/scratch/accepted.json
-```
-
-On first run, add `--lookback-days 30` to search further back.
 
 ### Customization
 
@@ -128,9 +110,9 @@ Edit `config.yaml`:
 ```yaml
 thought_leaders:
   - name: "Sam Altman"
-    search_query: '"Sam Altman" interview'
+    search_query: 'Sam Altman'
   - name: "Your Person"
-    search_query: '"Your Person" interview OR talk'
+    search_query: 'Your Person'
 
 channels:
   - name: "Your Channel"
@@ -151,7 +133,7 @@ Notifications are sent automatically after each `--commit-file`. Three backends 
 | Backend | Description |
 |---------|-------------|
 | `none` | No notifications (recommended to start with) |
-| `native` | Built-in Telegram delivery — requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` env vars |
+| `native` | Built-in Telegram delivery — requires `TELEGRAM_BOT_TOKEN` env var and `native.target` in config |
 | `openclaw` | Delivers via OpenClaw to Telegram or Feishu |
 
 ```yaml

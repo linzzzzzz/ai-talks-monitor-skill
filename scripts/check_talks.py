@@ -704,18 +704,17 @@ def notify_talks(config: dict, talks: list[dict], dry_run: bool = False) -> None
             print(f"(Unsupported native notification channel: {channel})")
             return
         tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        tg_chat_id = target or os.environ.get("TELEGRAM_CHAT_ID", "")
-        if tg_token and tg_chat_id:
+        if tg_token and target:
             send_telegram(
                 tg_token,
-                tg_chat_id,
+                target,
                 talks,
                 dry_run=dry_run,
                 language=language,
                 include_excerpt=include_excerpt,
             )
         else:
-            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set)")
+            print("(No TELEGRAM_BOT_TOKEN or native.target not set)")
         return
 
     if backend == "openclaw":
@@ -1284,10 +1283,12 @@ def cmd_commit(args) -> None:
         print_accepted_items(accepted)
     else:
         notify_talks(config, accepted)
+        native_cfg = config.get("notifications", {}).get("native", {})
+        native_target = (native_cfg.get("target") or "").strip()
         if backend in {"native", "telegram"} and not (
-            os.environ.get("TELEGRAM_BOT_TOKEN", "") and os.environ.get("TELEGRAM_CHAT_ID", "")
+            os.environ.get("TELEGRAM_BOT_TOKEN", "") and native_target
         ):
-            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
+            print("(No TELEGRAM_BOT_TOKEN or native.target not set — printing only)")
             print_accepted_items(accepted)
         elif backend not in {"native", "telegram", "openclaw"}:
             print_accepted_items(accepted)
@@ -1406,10 +1407,12 @@ def cmd_commit_file(args) -> None:
         print_accepted_items(accepted, prefer_zh=True)
     else:
         notify_talks(config, accepted)
+        native_cfg = config.get("notifications", {}).get("native", {})
+        native_target = (native_cfg.get("target") or "").strip()
         if backend in {"native", "telegram"} and not (
-            os.environ.get("TELEGRAM_BOT_TOKEN", "") and os.environ.get("TELEGRAM_CHAT_ID", "")
+            os.environ.get("TELEGRAM_BOT_TOKEN", "") and native_target
         ):
-            print("(No TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID set — printing only)")
+            print("(No TELEGRAM_BOT_TOKEN or native.target not set — printing only)")
             print_accepted_items(accepted, prefer_zh=True)
         elif backend not in {"native", "telegram", "openclaw"}:
             print_accepted_items(accepted, prefer_zh=True)

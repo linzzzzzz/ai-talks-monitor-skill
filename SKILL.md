@@ -29,8 +29,7 @@ Supports three modes:
 
 1. Set environment variables:
    - `YOUTUBE_API_KEY` — YouTube Data API v3 key (free; get from Google Cloud Console)
-   - `TELEGRAM_BOT_TOKEN` — Telegram bot token (optional; only for `notifications.backend: "telegram"`)
-   - `TELEGRAM_CHAT_ID` — Telegram chat/channel ID to send notifications to (optional; only for `notifications.backend: "telegram"`)
+   - `TELEGRAM_BOT_TOKEN` — Telegram bot token (optional; only for `notifications.backend: "native"`. Also set `native.target` in `config.yaml`)
    - `AI_TALKS_FEEDS_REPO` — absolute path to a local git repo (optional; if set, `--commit-file` copies RSS feeds there and pushes automatically)
 
 2. Install Python dependencies:

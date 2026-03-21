@@ -2,7 +2,7 @@
 
 [English](README_en.md)
 
-一个 Agent Skill，自动从 YouTube 上追踪顶尖 AI 大咖的一手演讲和访谈，过滤噪音，输出中英双语 RSS 订阅源。
+一个 Agent Skill，自动从 YouTube 上追踪顶尖 AI 大咖的一手演讲和访谈，过滤噪音，输出中英双语 RSS 订阅源，并推送到 Telegram / 飞书。
 
 ## 为什么做这个
 
@@ -43,8 +43,8 @@ RSS 阅读效果<br>
 
 不想折腾？直接订阅我的 RSS，每天北京时间 10:10 左右更新：
 
-- **英文版：** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
 - **中文版：** [ai_talks_zh.xml](https://linzzzzzz.github.io/feeds/ai_talks_zh.xml)
+- **英文版：** [ai_talks.xml](https://linzzzzzz.github.io/feeds/ai_talks.xml)
 
 推荐 RSS 阅读器：[NetNewsWire](https://netnewswire.com/)（免费，macOS/iOS）、[Inoreader](https://www.inoreader.com/)（免费，网页版）等。也可以直接加到 [TrendRadar](https://github.com/sansan0/TrendRadar) 的 RSS 订阅源中，和你的每日热点简报一起推送。
 
@@ -55,7 +55,7 @@ RSS 阅读效果<br>
 ### 工作原理
 
 ```
-YouTube 搜索 → 启发式预过滤 → LLM 分类 → 翻译enrichment → RSS 输出
+YouTube 搜索 → 启发式预过滤 → LLM 分类 → 翻译 → RSS + 推送
 ```
 
 1. **搜索** — 按 watchlist 搜索 YouTube，过滤反应视频、总结、剪辑
@@ -97,31 +97,13 @@ pip install requests pyyaml yt-dlp
 |------|----------|------|
 | `YOUTUBE_API_KEY` | **必须** | YouTube Data API v3 密钥（[免费获取](https://console.cloud.google.com)）。默认配置用 yt-dlp 做搜索（不需要 key），用 YouTube API 做元数据补全——这种混合模式既省 API 配额又能拿到可靠的元数据（发布日期、完整描述）。如果没有 API Key，元数据也会回退到 yt-dlp，而 yt-dlp 经常触发 YouTube 的机器人检测，导致数据不完整、feed 生成失败。 |
 | `AI_TALKS_FEEDS_REPO` | 否 | 本地 git 仓库路径，用于自动发布 feed 到 GitHub Pages |
-| `TELEGRAM_BOT_TOKEN` | 否 | Telegram 通知 |
-| `TELEGRAM_CHAT_ID` | 否 | Telegram 聊天/频道 ID |
+| `TELEGRAM_BOT_TOKEN` | 否 | Telegram 通知（需同时在 `config.yaml` 的 `native.target` 中设置聊天/频道 ID），无需指定如果沿用OpenClaw的推送 |
 
 **4. 运行**
 
 直接告诉你的 Agent：
 
 > "帮我查一下最新的 AI 演讲"
-
-或手动执行：
-
-```bash
-# 第一步：搜索候选
-python3 scripts/check_talks.py --fetch-candidates
-
-# 第二步：分类（由 Agent 通过 SKILL.md 完成）
-
-# 第三步：准备已接受内容
-python3 scripts/check_talks.py --prepare-accepted output/scratch/review.json
-
-# 第四步：提交到 feed
-python3 scripts/check_talks.py --commit-file output/scratch/accepted.json
-```
-
-首次运行建议加 `--lookback-days 30` 搜索更长时间范围。
 
 ### 自定义配置
 
@@ -130,19 +112,19 @@ python3 scripts/check_talks.py --commit-file output/scratch/accepted.json
 ```yaml
 thought_leaders:
   - name: "Sam Altman"
-    search_query: '"Sam Altman" interview'
+    search_query: 'Sam Altman'
   - name: "你想追踪的人"
-    search_query: '"你想追踪的人" interview OR talk'
+    search_query: '你想追踪的人'
 
 channels:
-  - name: "你的频道"
+  - name: "你想追踪的频道"
     channel_url: "https://www.youtube.com/@yourchannel"
 
 orgs:
   enabled: true
   searches:
-    - name: "你的机构"
-      search_query: '"你的机构" researcher talk podcast'
+    - name: "你想追踪的机构"
+      search_query: '"你想追踪的机构" researcher talk podcast'
       org: "机构名称"
 ```
 
@@ -153,7 +135,7 @@ orgs:
 | 方式 | 说明 |
 |------|------|
 | `none` | 不发送通知（默认推荐，先跑通再开） |
-| `native` | 内置 Telegram 推送，需设置 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` |
+| `native` | 内置 Telegram 推送，需设置 `TELEGRAM_BOT_TOKEN` 环境变量和 `native.target` |
 | `openclaw` | 通过 OpenClaw 推送到 Telegram 或飞书 |
 
 ```yaml
